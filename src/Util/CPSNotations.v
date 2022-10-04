@@ -4,6 +4,7 @@ Local Set Universe Polymorphism.
 (** [x <- f ; C] encodes a call to function [f] with [C] as the
   continuation. In [C], [x] refers to the output of [f]. *)
 
+Declare Scope cps_scope.
 Delimit Scope cps_scope with cps.
 
 (* [cpscall] is a marker to get Coq to print code using this notation only when it was actually used *)
@@ -21,7 +22,7 @@ Notation "x' <- v ; C" := (cpscall v%cps (fun x' => C%cps)) : cps_scope.
      [~> R] is universally quantified over the possible return types
      of the continuations that it can be applied to.
  *)
-Notation "~> R" := (forall {T} (_:R->T), T) : type_scope.
+Notation "~> R" := (forall T (_:R->T), T) : type_scope.
 
 (** The type [A ~> R] contains functions that takes an argument of
   type [A] and pass a value of type [R] to the continuation. Functions
@@ -34,7 +35,7 @@ Notation "A ~> R" := (A -> ~>R) : type_scope.
 (* [cpsreturn] is a marker to get Coq to print loop notations before a [return] *)
 Definition cpsreturn {T} (x:T) := x.
 (** [return x] passes [x] to the continuation implicit in the previous notations. *)
-Notation "'return' x" := (cpsreturn (fun {T} (continuation:_->T) => continuation x)) : cps_scope.
+Notation "'return' x" := (cpsreturn (fun T (continuation:_->T) => continuation x)) : cps_scope.
 
 Definition cpsbind {A B} (v:~> A) (f:A ~> B) : ~> B
   := fun T k => (a <- v; fa <- f a; k fa)%cps.

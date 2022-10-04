@@ -4,9 +4,12 @@ Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import Coq.Lists.List.
 Require Import Crypto.Arithmetic.Core.
 Require Import Crypto.Arithmetic.ModOps.
+Require Import Crypto.Arithmetic.BaseConversion.
 Require Import Crypto.Arithmetic.Partition.
 Require Import Crypto.Arithmetic.WordByWordMontgomery.
+Require Import Crypto.Arithmetic.BYInv.
 Require Import Crypto.Util.ZRange.
+Require Import Crypto.Util.ZRange.BasicLemmas.
 Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
 Require Import Crypto.Util.ZUtil.Tactics.LtbToLt.
 Require Import Crypto.Util.Bool.
@@ -31,17 +34,43 @@ Local Notation is_bounded_by0o r
 Local Notation is_bounded_by bounds ls
   := (fold_andb_map (fun r v'' => is_bounded_by0o r v'') bounds ls).
 
+Local Notation is_tighter_than0 x y
+  := ((lower y <=? lower x) && (upper x <=? upper y)).
+Local Notation is_tighter_than2 r v
+  := (let '(v1, v2) := v in is_tighter_than0 (fst r) v1 && is_tighter_than0 (snd r) v2).
+Local Notation is_tighter_than0oo r1 r2
+  := (match r1, r2 with _, None => true | None, Some _ => false | Some r1', Some r2' => is_tighter_than0 r1' r2' end).
+Local Notation is_tighter_than ls1 ls2
+  := (fold_andb_map (fun x y => is_tighter_than0oo x y) ls1 ls2).
+
 Section list_Z_bounded.
   Definition list_Z_bounded_by
              (bounds : list (option zrange))
              (v : list Z)
     := is_bounded_by bounds v = true.
 
+  Definition list_Z_tighter_than
+             (bounds1 bounds2 : list (option zrange))
+    := is_tighter_than bounds1 bounds2 = true.
+
   Lemma length_list_Z_bounded_by bounds ls
     : list_Z_bounded_by bounds ls -> length ls = length bounds.
   Proof using Type.
     intro H.
     apply fold_andb_map_length in H; congruence.
+  Qed.
+
+  Lemma relax_list_Z_bounded_by
+    : forall (bounds1 bounds2 : list (option zrange))
+             (H : list_Z_tighter_than bounds1 bounds2)
+             (v : list Z),
+      list_Z_bounded_by bounds1 v -> list_Z_bounded_by bounds2 v.
+  Proof using Type.
+    cbv [list_Z_bounded_by list_Z_tighter_than].
+    induction bounds1, bounds2, v; cbn in *; try congruence.
+    rewrite ?Bool.andb_true_iff in *; intros; destruct_head'_and.
+    break_innermost_match_hyps; repeat apply conj; try congruence; eauto.
+    eapply ZRange.is_bounded_by_of_is_tighter_than; eassumption.
   Qed.
 
   Lemma eval_list_Z_bounded_by wt n' bounds bounds' f
@@ -63,8 +92,8 @@ Section list_Z_bounded.
     { rewrite !map_app in *; cbn [map] in *.
       erewrite !Positional.eval_snoc by (distr_length; eauto).
       cbv [list_Z_bounded_by] in *.
-      specialize_by (intros; auto with omega).
-      specialize (Hwt n); specialize_by omega.
+      specialize_by (intros; auto with lia).
+      specialize (Hwt n); specialize_by lia.
       repeat first [ progress Bool.split_andb
                    | rewrite Nat.add_1_r in *
                    | rewrite fold_andb_map_snoc in *
@@ -93,32 +122,68 @@ Module Primitives.
     -> mulx x y = ((x * y) mod 2^s, (x * y) / 2^s)
        /\ is_bounded_by2 (r[0~>2^s-1], r[0~>2^s-1]) (mulx x y) = true.
 
-  Definition addcarryx_correct s
+  Local Notation return_carry_range relax_adc_sbb_return_carry_to_bitwidth s
+    := (if List.existsb (Z.eqb s) relax_adc_sbb_return_carry_to_bitwidth then r[0~>2^s%Z-1] else r[0~>1])%zrange.
+
+  Definition addcarryx_correct (relax_adc_sbb_return_carry_to_bitwidth : list Z) s
              (addcarryx : Z -> Z -> Z -> Z * Z)
     := forall c x y,
       is_bounded_by0 r[0~>1] c = true
       -> is_bounded_by0 r[0~>2^s-1] x = true
       -> is_bounded_by0 r[0~>2^s-1] y = true
       -> addcarryx c x y = ((c + x + y) mod 2^s, (c + x + y) / 2^s)
-         /\ is_bounded_by2 (r[0~>2^s-1], r[0~>1]) (addcarryx c x y) = true.
+         /\ is_bounded_by2 (r[0~>2^s-1], return_carry_range relax_adc_sbb_return_carry_to_bitwidth s)
+                           (addcarryx c x y) = true.
 
-  Definition subborrowx_correct s
+  Definition subborrowx_correct (relax_adc_sbb_return_carry_to_bitwidth : list Z) s
              (subborrowx : Z -> Z -> Z -> Z * Z)
     := forall b x y,
       is_bounded_by0 r[0~>1] b = true
       -> is_bounded_by0 r[0~>2^s-1] x = true
       -> is_bounded_by0 r[0~>2^s-1] y = true
       -> subborrowx b x y = ((-b + x + -y) mod 2^s, -((-b + x + -y) / 2^s))
-         /\ is_bounded_by2 (r[0~>2^s-1], r[0~>1]) (subborrowx b x y) = true.
+         /\ is_bounded_by2 (r[0~>2^s-1], return_carry_range relax_adc_sbb_return_carry_to_bitwidth s)
+                           (subborrowx b x y) = true.
 
-  Definition cmovznz_correct s
+  Definition value_barrier_correct (is_signed : bool) s
+             (value_barrier : Z -> Z)
+    := match (if is_signed
+              then r[-2^(s-1) ~> 2^(s-1) - 1]
+              else r[0 ~> 2^s - 1])%zrange with
+       | rs
+         =>
+         forall z,
+           is_bounded_by0 rs z = true
+           -> value_barrier z = z
+       end.
+
+  Definition cmovznz_correct (is_signed : bool) s
              (cmovznz : Z -> Z -> Z -> Z)
-    := forall cond z nz,
-      is_bounded_by0 r[0~>1] cond = true
-      -> is_bounded_by0 r[0~>2^s-1] z = true
-      -> is_bounded_by0 r[0~>2^s-1] nz = true
-      -> cmovznz cond z nz = (if Decidable.dec (cond = 0) then z else nz)
-         /\ is_bounded_by0 r[0~>2^s-1] (cmovznz cond z nz) = true.
+    := match (if is_signed
+              then r[-2^(s-1) ~> 2^(s-1) - 1]
+              else r[0 ~> 2^s - 1])%zrange with
+       | rs
+         =>
+         forall cond z nz,
+           is_bounded_by0 r[0~>1] cond = true
+           -> is_bounded_by0 rs z = true
+           -> is_bounded_by0 rs nz = true
+           -> cmovznz cond z nz = (if Decidable.dec (cond = 0) then z else nz)
+              /\ is_bounded_by0 rs (cmovznz cond z nz) = true
+       end.
+
+  Section copy.
+    Context (n : nat)
+            (saturated_bounds : list (option zrange))
+            (length_saturated_bounds : length saturated_bounds = n).
+
+    Definition copy_correct
+               (copy : list Z -> list Z)
+      := forall x,
+        list_Z_bounded_by saturated_bounds x
+        -> copy x = x
+           /\ list_Z_bounded_by saturated_bounds (copy x).
+  End copy.
 End Primitives.
 
 Module selectznz.
@@ -130,15 +195,38 @@ Module selectznz.
     Local Notation eval := (Positional.eval wt n).
 
     Definition selectznz_correct
-               (selectznz : Z -> list Z -> list Z -> list Z)
+        (selectznz : Z -> list Z -> list Z -> list Z)
       := forall cond x y,
-        is_bounded_by0 r[0~>1] cond = true
-        -> list_Z_bounded_by saturated_bounds x
-        -> list_Z_bounded_by saturated_bounds y
-        -> eval (selectznz cond x y) = (if Decidable.dec (cond = 0) then eval x else eval y)
-           /\ list_Z_bounded_by saturated_bounds (selectznz cond x y).
+      is_bounded_by0 r[0~>1] cond = true
+      -> list_Z_bounded_by saturated_bounds x
+      -> list_Z_bounded_by saturated_bounds y
+      -> (selectznz cond x y) = (if Decidable.dec (cond = 0) then x else y)
+      /\ list_Z_bounded_by saturated_bounds (selectznz cond x y).
+         
   End __.
+
+
 End selectznz.
+
+Module BaseConversion.
+  Section __.
+    Context (src_wt dst_wt : nat -> Z)
+            (s : Z) (c : list (Z * Z))
+            (src_n dst_n : nat)
+            (inbounds : list (option zrange))
+            (outbounds : list (option zrange))
+            (length_inbounds : length inbounds = src_n)
+            (length_outbounds : length outbounds = dst_n).
+    Local Notation src_eval := (Positional.eval src_wt src_n).
+    Local Notation dst_eval := (Positional.eval dst_wt dst_n).
+
+    Definition convert_bases_correct
+               (convert_bases : list Z -> list Z)
+      := forall x,
+        list_Z_bounded_by inbounds x
+        -> convert_bases x = Partition.partition dst_wt dst_n (src_eval x).
+  End __.
+End BaseConversion.
 
 Module Solinas.
   (** re-export [selectznz_correct] and the primitives.  We
@@ -149,7 +237,8 @@ Module Solinas.
   Include selectznz.
 
   Section __.
-    Context (wt : nat -> Z)
+    Context (bitwidth : Z) (* only for encode_word *)
+            (wt : nat -> Z)
             (n : nat)
             (n_bytes : nat)
             (m : Z)
@@ -165,9 +254,11 @@ Module Solinas.
     Local Notation bytes_eval := (Positional.eval (weight 8 1) n_bytes).
 
     Let prime_bytes_upperbound_list : list Z
-      := Positional.encode_no_reduce (weight 8 1) n_bytes (s-1).
+      := Partition.partition (weight 8 1) n_bytes (s-1).
     Let prime_bytes_bounds : list (option zrange)
       := List.map (fun v => Some r[0 ~> v]%zrange) prime_bytes_upperbound_list.
+    Local Notation word_bound
+      := r[0~>(2^bitwidth - 1)]%zrange.
     Let prime_bound : zrange
       := r[0~>(m - 1)]%zrange.
 
@@ -230,6 +321,36 @@ Module Solinas.
         -> eval (opp x) mod m = (Z.opp (eval x)) mod m
            /\ list_Z_bounded_by loose_bounds (opp x).
 
+    Definition carry_add_correct
+               (carry_add : list Z -> list Z -> list Z)
+      := forall x y,
+        list_Z_bounded_by tight_bounds x
+        -> list_Z_bounded_by tight_bounds y
+        -> eval (carry_add x y) mod m = (Z.add (eval x) (eval y)) mod m
+           /\ list_Z_bounded_by tight_bounds (carry_add x y).
+
+    Definition carry_sub_correct
+               (carry_sub : list Z -> list Z -> list Z)
+      := forall x y,
+        list_Z_bounded_by tight_bounds x
+        -> list_Z_bounded_by tight_bounds y
+        -> eval (carry_sub x y) mod m = (Z.sub (eval x) (eval y)) mod m
+           /\ list_Z_bounded_by tight_bounds (carry_sub x y).
+
+    Definition carry_opp_correct
+               (carry_opp : list Z -> list Z)
+      := forall x,
+        list_Z_bounded_by tight_bounds x
+        -> eval (carry_opp x) mod m = (Z.opp (eval x)) mod m
+           /\ list_Z_bounded_by tight_bounds (carry_opp x).
+
+    Definition relax_correct
+               (relax : list Z -> list Z)
+      := forall x,
+        list_Z_bounded_by tight_bounds x
+        -> relax x = x
+           /\ list_Z_bounded_by loose_bounds (relax x).
+
     Definition carry_correct
                (carry : list Z -> list Z)
       := forall x,
@@ -253,6 +374,13 @@ Module Solinas.
         is_bounded_by0 prime_bound x = true
         -> eval (encode x) mod m = x mod m
            /\ list_Z_bounded_by tight_bounds (encode x).
+
+    Definition encode_word_correct
+               (encode_word : Z -> list Z)
+      := forall x,
+        is_bounded_by0 word_bound x = true
+        -> eval (encode_word x) mod m = x mod m
+           /\ list_Z_bounded_by tight_bounds (encode_word x).
 
     Section ring.
       Context carry_mul (Hcarry_mul : carry_mul_correct carry_mul)
@@ -314,7 +442,7 @@ Module Solinas.
       Qed.
 
       Lemma Good : GoodT.
-      Proof.
+      Proof using Hadd Hcarry Hcarry_mul Hencode Hone Hopp Hrelax Hsub Hzero m_pos.
         split_and; simpl in *.
         repeat match goal with
                | [ H : context[andb _ true] |- _ ] => setoid_rewrite andb_true_r in H
@@ -381,19 +509,30 @@ Module WordByWordMontgomery.
             (bytes_valid : list Z -> Prop)
             (m_pos : 0 < m)
             (from_montgomery : list Z -> list Z)
+            (to_montgomery : list Z -> list Z)
             (* saturated_bounds is only for selectznz *)
             (saturated_bounds : list (option zrange))
             (length_saturated_bounds : length saturated_bounds = n).
     Local Notation eval := (@WordByWordMontgomery.eval bitwidth n).
     Local Notation bytes_eval := (Positional.eval (weight 8 1) n_bytes).
+    Local Notation twos_complement_eval f := (eval_twos_complement bitwidth n f).
+
     Let prime_bound : zrange
       := r[0~>(m - 1)]%zrange.
+    Local Notation prime_word_bound (* fits in a single word, and smaller than the prime *)
+      := r[0~>(Z.min m (2^bitwidth) - 1)]%zrange.
 
     Definition from_montgomery_correct
       := forall v,
         valid v
         -> eval (from_montgomery v) mod m = (eval v * r'^n) mod m
            /\ valid (from_montgomery v).
+
+    Definition to_montgomery_correct
+      := forall v,
+        valid v
+        -> eval (from_montgomery (to_montgomery v)) mod m = (eval v) mod m
+           /\ valid (to_montgomery v).
 
     Definition mul_correct
                (mul : list Z -> list Z -> list Z)
@@ -450,6 +589,13 @@ Module WordByWordMontgomery.
         -> eval (from_montgomery (encode x)) mod m = x mod m
            /\ valid (encode x).
 
+    Definition encode_word_correct
+               (encode_word : Z -> list Z)
+      := forall x,
+        is_bounded_by0 prime_word_bound x = true
+        -> eval (from_montgomery (encode_word x)) mod m = x mod m
+           /\ valid (encode_word x).
+
     Definition nonzero_correct
                (nonzero : list Z -> Z)
       := forall x,
@@ -470,13 +616,50 @@ Module WordByWordMontgomery.
            /\ valid (from_bytes x).
 
     Definition selectznz_correct
-               (selectznz : Z -> list Z -> list Z -> list Z)
+                (selectznz : Z -> list Z -> list Z -> list Z)
       : Prop
       := selectznz.selectznz_correct
-           (UniformWeight.uweight bitwidth)
-           n
-           saturated_bounds
-           selectznz.
+            saturated_bounds
+            selectznz.
+
+    (* Bernstein-Yang inversion *)
+    Definition msat_correct
+               (msat : list Z) :=
+      twos_complement_eval msat = m /\
+      valid msat.
+
+    Definition divstep_precomp_correct
+               (divstep_precomp : list Z) :=
+      let mbits := (Z.log2 m) + 1  in
+      (eval (from_montgomery divstep_precomp) = ((m - 1) / 2) ^ (if Decidable.dec (mbits < 46)
+                                                         then (49 * mbits + 80) / 17
+                                                         else (49 * mbits + 57)/ 17))
+      /\ valid divstep_precomp.
+
+    Definition divstep_correct
+               (divstep :
+                  Z -> list Z -> list Z -> list Z -> list Z ->
+                  Z * list Z * list Z * list Z * list Z) : Prop
+      := forall (d : Z) f g v r,
+        valid v -> valid r ->
+        let '(d1,f1,g1,v1,r1) := divstep d f g v r in
+        (((d1,
+           twos_complement_eval f1,
+           twos_complement_eval g1,
+           eval (from_montgomery v1) mod m,
+           eval (from_montgomery r1) mod m) =
+          (if (0 <? d) && Z.odd (twos_complement_eval g)
+           then (1 - d,
+                 (twos_complement_eval g),
+                 ((twos_complement_eval g) - (twos_complement_eval f)) / 2,
+                 (2 * (eval (from_montgomery r))) mod m,
+                 ((eval (from_montgomery v)) - (eval (from_montgomery v))) mod m)
+           else (1 + d,
+                 (twos_complement_eval f),
+                 ((twos_complement_eval g) + (twos_complement_eval g mod 2) * (twos_complement_eval f)) / 2,
+                 (2 * (eval (from_montgomery v))) mod m,
+                 ((eval (from_montgomery r)) + (twos_complement_eval g mod 2) * (eval (from_montgomery v))) mod m)))
+         /\ valid r1 /\ valid r1 /\ valid f1 /\ valid g1).
 
     Section ring.
       Context mul     (Hmul     :     mul_correct mul)
@@ -536,7 +719,7 @@ Module WordByWordMontgomery.
       Qed.
 
       Lemma Good : GoodT.
-      Proof.
+      Proof using Hadd Hencode Hmul Hone Hopp Hsub Hzero m_pos.
         split_and; simpl in *.
         repeat match goal with
                | [ H : context[andb _ true] |- _ ] => setoid_rewrite andb_true_r in H

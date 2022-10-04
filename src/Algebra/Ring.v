@@ -1,6 +1,7 @@
 Require Coq.setoid_ring.Ncring.
 Require Coq.setoid_ring.Cring.
 Require Import Coq.Classes.Morphisms.
+Require Import Coq.micromega.Lia.
 Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.Tactics.OnSubterms.
 Require Import Crypto.Util.Tactics.Revert.
@@ -15,42 +16,31 @@ Section Ring.
   Local Notation "0" := zero. Local Notation "1" := one.
   Local Infix "+" := add. Local Infix "-" := sub. Local Infix "*" := mul.
 
-  Lemma mul_0_l : forall x, 0 * x = 0.
+  Global Instance Ncring_Ring_ops : @Ncring.Ring_ops T zero one add mul sub opp eq := {}.
+  Global Instance Ncring_Ring : @Ncring.Ring T zero one add mul sub opp eq Ncring_Ring_ops.
   Proof using Type*.
-    intros x.
-    assert (0*x = 0*x) as Hx by reflexivity.
-    rewrite <-(right_identity 0), right_distributive in Hx at 1.
-    assert (0*x + 0*x - 0*x = 0*x - 0*x) as Hxx by (rewrite Hx; reflexivity).
-    rewrite !ring_sub_definition, <-associative, right_inverse, right_identity in Hxx; exact Hxx.
-  Qed.
+    split; exact _ || cbv; intros; eauto using left_identity, right_identity, commutative, associative, right_inverse, left_distributive, right_distributive, ring_sub_definition with core typeclass_instances.
+    - (* TODO: why does [eauto using @left_identity with typeclass_instances] not work? *)
+      eapply @left_identity; eauto with typeclass_instances.
+    - eapply @right_identity; eauto with typeclass_instances.
+    - eapply associative.
+  Qed. 
+
+  
+  Lemma mul_0_l : forall x, 0 * x = 0.
+  Proof using Type*. apply Ncring.ring_mul_0_l. Qed.
 
   Lemma mul_0_r : forall x, x * 0 = 0.
-  Proof using Type*.
-    intros x.
-    assert (x*0 = x*0) as Hx by reflexivity.
-    rewrite <-(left_identity 0), left_distributive in Hx at 1.
-    assert (opp (x*0) + (x*0 + x*0)  = opp (x*0) + x*0) as Hxx by (rewrite Hx; reflexivity).
-    rewrite associative, left_inverse, left_identity in Hxx; exact Hxx.
-  Qed.
+  Proof using Type*. apply Ncring.ring_mul_0_r. Qed.
 
   Lemma sub_0_l x : 0 - x = opp x.
   Proof using Type*. rewrite ring_sub_definition. rewrite left_identity. reflexivity. Qed.
 
   Lemma mul_opp_r x y : x * opp y = opp (x * y).
-  Proof using Type*.
-    assert (Ho:x*(opp y) + x*y = 0)
-      by (rewrite <-left_distributive, left_inverse, mul_0_r; reflexivity).
-    rewrite <-(left_identity (opp (x*y))), <-Ho; clear Ho.
-    rewrite <-!associative, right_inverse, right_identity; reflexivity.
-  Qed.
+  Proof using Type*. symmetry. apply Ncring.ring_opp_mul_r. Qed. 
 
   Lemma mul_opp_l x y : opp x * y = opp (x * y).
-  Proof using Type*.
-    assert (Ho:opp x*y + x*y = 0)
-      by (rewrite <-right_distributive, left_inverse, mul_0_l; reflexivity).
-    rewrite <-(left_identity (opp (x*y))), <-Ho; clear Ho.
-    rewrite <-!associative, right_inverse, right_identity; reflexivity.
-  Qed.
+  Proof using Type*. symmetry. apply Ncring.ring_opp_mul_l. Qed. 
 
   Definition opp_zero_iff : forall x, opp x = 0 <-> x = 0 := Group.inv_id_iff.
 
@@ -92,17 +82,7 @@ Section Ring.
     forall x y : T, not (eq (mul x y) zero) <-> (not (eq x zero) /\ not (eq y zero)).
   Proof using Type*. intros; rewrite zero_product_iff_zero_factor; tauto. Qed.
 
-  Global Instance Ncring_Ring_ops : @Ncring.Ring_ops T zero one add mul sub opp eq := {}.
-  Global Instance Ncring_Ring : @Ncring.Ring T zero one add mul sub opp eq Ncring_Ring_ops.
-  Proof using Type*.
-    split; exact _ || cbv; intros; eauto using left_identity, right_identity, commutative, associative, right_inverse, left_distributive, right_distributive, ring_sub_definition with core typeclass_instances.
-    - (* TODO: why does [eauto using @left_identity with typeclass_instances] not work? *)
-      eapply @left_identity; eauto with typeclass_instances.
-    - eapply @right_identity; eauto with typeclass_instances.
-    - eapply associative.
-    - intros; eapply right_distributive.
-    - intros; eapply left_distributive.
-  Qed.
+  
 End Ring.
 
 Section Homomorphism.
@@ -299,7 +279,7 @@ Section of_Z.
   Lemma of_nat_sub x (H: (0 < x)%nat):
     of_nat (Nat.sub x 1) = Rsub (of_nat x) Rone.
   Proof using Type*.
-    induction x; [omega|simpl].
+    induction x; [lia|simpl].
     rewrite <-of_nat_add.
     rewrite Nat.sub_0_r, Nat.add_1_r.
     simpl of_nat.
@@ -426,6 +406,42 @@ Section of_Z.
   Qed.
 End of_Z.
 
+Section of_Z_absorbs_homomorphism.
+  Context {R Req Rzero Rone Ropp Radd Rsub Rmul}
+          {Rring : @ring R Req Rzero Rone Ropp Radd Rsub Rmul}.
+  Context {R' R'eq R'zero R'one R'opp R'add R'sub R'mul}
+          {R'ring : @ring R' R'eq R'zero R'one R'opp R'add R'sub R'mul}.
+  Context {phi}
+          {Hphi:@is_homomorphism R Req Rone Radd Rmul
+                                     R' R'eq R'one R'add R'mul phi}.
+
+  Local Notation R_of_nat := (@of_nat R Rzero Rone Radd) (only parsing).
+  Local Notation R'_of_nat := (@of_nat R' R'zero R'one R'add) (only parsing).
+  Local Notation R_of_Z := (@of_Z R Rzero Rone Ropp Radd) (only parsing).
+  Local Notation R'_of_Z := (@of_Z R' R'zero R'one R'opp R'add) (only parsing).
+
+  Lemma of_nat_absorbs_homomorphism x
+    : R'eq (phi (R_of_nat x)) (R'_of_nat x).
+  Proof.
+    induction x as [|x IHx]; cbn [of_nat];
+      repeat first [ rewrite homomorphism_zero
+                   | rewrite homomorphism_add
+                   | rewrite homomorphism_one
+                   | rewrite IHx
+                   | reflexivity ].
+  Qed.
+
+  Lemma of_Z_absorbs_homomorphism x
+    : R'eq (phi (R_of_Z x)) (R'_of_Z x).
+  Proof.
+    cbv [of_Z]; break_innermost_match;
+      repeat first [ rewrite homomorphism_zero
+                   | rewrite homomorphism_opp
+                   | rewrite of_nat_absorbs_homomorphism
+                   | reflexivity ].
+  Qed.
+End of_Z_absorbs_homomorphism.
+
 Definition char_ge
            {R eq zero one opp add} {sub:R->R->R} {mul:R->R->R}
            C :=
@@ -442,6 +458,6 @@ Ltac ring_simplify_subterms_in_all :=
 Create HintDb ring_simplify discriminated.
 Create HintDb ring_simplify_subterms discriminated.
 Create HintDb ring_simplify_subterms_in_all discriminated.
-Hint Extern 1 => progress ring_simplify : ring_simplify.
-Hint Extern 1 => progress ring_simplify_subterms : ring_simplify_subterms.
-Hint Extern 1 => progress ring_simplify_subterms_in_all : ring_simplify_subterms_in_all.
+Global Hint Extern 1 => progress ring_simplify : ring_simplify.
+Global Hint Extern 1 => progress ring_simplify_subterms : ring_simplify_subterms.
+Global Hint Extern 1 => progress ring_simplify_subterms_in_all : ring_simplify_subterms_in_all.

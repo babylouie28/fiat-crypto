@@ -6,8 +6,8 @@ Require Rewriter.Util.LetIn.
 
 (* Make this a notation for the version in [Rewriter] for ease of conversion *)
 Notation Let_In := Rewriter.Util.LetIn.Let_In (only parsing).
+Notation Let_In_pf := Rewriter.Util.LetIn.Let_In_pf (only parsing).
 
-Definition Let_In_pf {A P} (x : A) (f : forall a : A, a = x -> P a) : P x := let y := x in f y eq_refl.
 Notation "'dlet_nd' x .. y := v 'in' f" := (Let_In (P:=fun _ => _) v (fun x => .. (fun y => f) .. )) (only parsing).
 Notation "'dlet' x .. y := v 'in' f" := (Let_In v (fun x => .. (fun y => f) .. )).
 Notation "'pflet' x , pf := y 'in' f" := (Let_In_pf y (fun x pf => f)).
@@ -34,6 +34,9 @@ Definition app_Let_In_nd {A B T} (f:B->T) (e:A) (C:A->B)
 Definition Let_app_In_nd {A B T} (f:A->B) (e:A) (C:B->T)
   : Let_In (f e) C = Let_In e (fun v => C (f v)) := eq_refl.
 
+Lemma unfold_Let_In {A B} v f : @Let_In A B v f = f v.
+Proof. reflexivity. Qed.
+
 Class _call_let_in_to_Let_In {T} (e:T) := _let_in_to_Let_In_return : T.
 (* : forall T, gallina T -> gallina T, structurally recursive in the argument *)
 Ltac let_in_to_Let_In e :=
@@ -52,7 +55,7 @@ Ltac let_in_to_Let_In e :=
     with fun x => @?C x => C end (* match drops the type cast *)
   | ?x => x
   end.
-Hint Extern 0 (_call_let_in_to_Let_In ?e) => (
+Global Hint Extern 0 (_call_let_in_to_Let_In ?e) => (
   let e := let_in_to_Let_In e in eexact e
 ) : typeclass_instances.
 Ltac change_let_in_with_Let_In :=

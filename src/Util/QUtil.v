@@ -3,6 +3,7 @@ Require Import Coq.micromega.Lia.
 Require Import Crypto.Util.Decidable.
 Require Import Crypto.Util.ZUtil.Tactics.DivModToQuotRem.
 Require Import Crypto.Util.ZUtil.Morphisms.
+Require Import Crypto.Util.Bool.Reflect.
 
 Local Open Scope Z_scope.
 
@@ -48,7 +49,7 @@ Section pow_ceil_mul_nat.
     : forall i, wt i <> 0.
   Proof.
     intros.
-    eapply Z.pow_nonzero; try omega.
+    eapply Z.pow_nonzero; try lia.
     eapply zero_le_ceil_mul_nat.
   Qed.
 
@@ -69,7 +70,7 @@ Section pow_ceil_mul_nat.
     change (inject_Z 1) with 1%Q.
     rewrite Qmult_plus_distr_r, Qmult_1_r.
     let g := constr:((f * inject_Z (Z.of_nat i))%Q) in
-    replace (Qceiling (f+g)) with ((Qceiling (f+g)-Qceiling g)+Qceiling g) at 1 by omega.
+    replace (Qceiling (f+g)) with ((Qceiling (f+g)-Qceiling g)+Qceiling g) at 1 by lia.
     rewrite Z.pow_add_r; [reflexivity|eapply Zle_minus_le_0|apply zero_le_ceil_mul_nat].
     eapply Qceiling_resp_le.
     rewrite <-Qplus_0_l at 1.
@@ -108,10 +109,10 @@ Section pow_ceil_mul_nat2.
     etransitivity; [|eapply Z.sub_le_ge_Proper].
     2:eapply add_floor_l_le_ceiling.
     2:eapply Z.ge_le_iff; reflexivity.
-    assert (1 <= Qfloor f); [|omega].
+    assert (1 <= Qfloor f); [|lia].
     change 1%Z with (Qfloor 1).
     eapply Qfloor_resp_le.
-    all: trivial; try omega; (eapply (Qle_trans _ 1 _); [vm_decide|assumption]).
+    all: trivial; try lia; (eapply (Qle_trans _ 1 _); [vm_decide|assumption]).
   Qed.
 
   Lemma pow_ceil_mul_nat_divide_nonzero i :
@@ -126,10 +127,38 @@ Section pow_ceil_mul_nat2.
   Proof.
     rewrite pow_ceil_mul_S.
     rewrite Z_div_mult_full; [|apply pow_ceil_mul_nat_nonzero].
-    all:[ > | omega | eapply (Qle_trans _ 1 _); [vm_decide|assumption].. ].
+    all:[ > | lia | eapply (Qle_trans _ 1 _); [vm_decide|assumption].. ].
     apply Z.pow_le_mono_r; [ assumption | ].
     rewrite Z.le_sub_le_add_l, Z.add_comm.
     etransitivity; [ | apply Qceiling_le_add ].
     reflexivity.
   Qed.
 End pow_ceil_mul_nat2.
+
+Scheme Equality for Q.
+Scheme Induction for Q Sort Prop.
+Scheme Induction for Q Sort Set.
+Scheme Induction for Q Sort Type.
+Scheme Minimality for Q Sort Prop.
+Scheme Minimality for Q Sort Set.
+Scheme Minimality for Q Sort Type.
+
+Global Instance reflect_eq_Q : reflect_rel (@eq Q) Q_beq | 10
+  := reflect_of_brel internal_Q_dec_bl internal_Q_dec_lb.
+
+Global Instance Q_rect_Proper {P}
+  : Proper (forall_relation (fun _ => forall_relation (fun _ => eq)) ==> forall_relation (fun _ => eq)) (Q_rect P).
+Proof.
+  intros f g Hfg [? ?]; cbn; apply Hfg.
+Qed.
+
+Global Instance Q_rect_Proper_nondep {T}
+  : Proper (pointwise_relation _ (pointwise_relation _ eq) ==> eq ==> eq) (Q_rect (fun _ => T)).
+Proof.
+  intros f g Hfg [? ?] y ?; subst y; cbn; apply Hfg.
+Qed.
+
+Global Instance Q_rect_Proper_nondep_gen {P} (R : relation P) : Proper ((eq ==> eq ==> R) ==> eq ==> R) (@Q_rect (fun _ => P)) | 100.
+Proof.
+  intros f g Hfg [? ?] y ?; subst y; cbn; now apply Hfg.
+Qed.

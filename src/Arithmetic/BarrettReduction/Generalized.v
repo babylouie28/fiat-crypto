@@ -8,7 +8,7 @@
     ± 1] to [k ± offset]).  This leads to weaker conditions on the
     base ([b]), exponent ([k]), and the [offset] than those given in
     the HAC. *)
-Require Import Coq.ZArith.ZArith Coq.micromega.Psatz.
+Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import Crypto.Util.ZUtil.Div.
 Require Import Crypto.Util.ZUtil.Modulo.
 Require Import Crypto.Util.ZUtil.Pow.
@@ -206,7 +206,7 @@ Section barrett.
       Lemma q_bound : a / n - 1 <= q.
       Proof.
         rewrite (proj2_sig q_nice_strong).
-        break_match; omega.
+        break_match; lia.
       Qed.
 
       Lemma r_small_strong : r < 2 * n.

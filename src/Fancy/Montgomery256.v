@@ -4,7 +4,7 @@ Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Rewriter.Language.Language. Import Language.Compilers.
 Require Import Crypto.Language.API. Import Language.API.Compilers.
-Require Import Rewriter.Language.Wf.
+Require Import Rewriter.Language.Wf. Import Language.Wf.Compilers.
 Require Import Crypto.Arithmetic.FancyMontgomeryReduction.
 Require Import Crypto.PushButtonSynthesis.FancyMontgomeryReduction.
 Require Import Crypto.Fancy.Compiler.
@@ -29,10 +29,13 @@ Module Montgomery256.
          As montred256_eq.
   Proof. lazy; reflexivity. Qed.
 
+  Lemma Wf_montred256 : API.Wf montred256.
+  Proof using Type. eapply Wf_montred, montred256_eq. Qed.
+
   Lemma montred256_correct :
     COperationSpecifications.MontgomeryReduction.montred_correct N R R' (API.Interp montred256).
   Proof.
-    apply montred_correct with (n:=2%nat) (machine_wordsize:=machine_wordsize) (N':=N').
+    apply montred_correct with (n:=2%nat) (machine_wordsize:=machine_wordsize) (N':=N') (requests:=[]).
     { lazy. reflexivity. }
     { apply montred256_eq. }
   Qed.
@@ -70,14 +73,13 @@ Module Montgomery256.
 
   (* TODO: these tactics are duplicated; move them elsewhere (probably translation *)
   Local Ltac wf_subgoal :=
-    repeat match goal with
-           | _ => progress cbn [fst snd]
-           | |- Language.Wf.Compilers.expr.wf _ _ _ =>
-             econstructor; try solve [econstructor]; [ ]
-           | |- Language.Wf.Compilers.expr.wf _ _ _ =>
-             solve [econstructor]
-           | |- In _ _ => auto 50 using in_eq, in_cons
-           end.
+    repeat first [ progress cbn [List.In type.and_for_each_lhs_of_arrow fst snd List.app List.map]
+                 | apply expr.wf_smart_App_curried
+                 | progress intros
+                 | exfalso; assumption
+                 | apply conj
+                 | exact I
+                 | solve [ eauto 50 using or_introl, or_intror, eq_refl with nocore ] ].
   Local Ltac valid_expr_subgoal :=
     repeat match goal with
            | _ => progress intros
@@ -125,13 +127,10 @@ Module Montgomery256.
     { cbn; intros; subst RegZero RegMod RegPInv RegHi RegLo.
       match goal with |- context [_ mod ?m] => change m with (2 ^ machine_wordsize) end.
       assert (R <= 2 ^ machine_wordsize) by (cbv; congruence).
-      intuition; Prod.inversion_prod; subst; apply Z.mod_small; omega. }
-    { cbn.
-      repeat match goal with
-             | _ => apply Compilers.expr.WfLetIn
-             | _ => progress wf_subgoal
-             | _ => econstructor
-             end. }
+      intuition; Prod.inversion_prod; subst; apply Z.mod_small; lia. }
+    { repeat first [ eapply expr.wf_Proper_list, Wf_montred256
+                   | progress cbv [make_pairs consts_list arg_list]
+                   | wf_subgoal ]. }
     { cbn. cbv [N' N].
       repeat (econstructor; [ solve [valid_expr_subgoal] | intros ]).
       econstructor. valid_expr_subgoal. }
@@ -228,7 +227,7 @@ Module Montgomery256.
     intros. subst x.
     erewrite <-montred256_fancy_correct with (error:=100000%positive) by eauto.
     rewrite <-montred256_alloc_equivalent with (errorR := RegZero) (errorP := 1%positive) (extra_reg:=extra_reg)
-      by (cbv [R N N'] in *; auto with omega).
+      by (cbv [R N N'] in *; auto with lia).
 
     (* TODO: factor out this tactic *)
     match goal with
@@ -248,6 +247,17 @@ Module Montgomery256.
     reflexivity.
   Qed.
 End Montgomery256.
+
+Section with_notations.
+  Import Crypto.Language.IdentifiersBasicGENERATED.Compilers.
+  Import Crypto.Util.ZRange.
+  Local Open Scope zrange_scope.
+  Local Open Scope Z_scope.
+  Local Open Scope expr_scope.
+  Local Notation uint256 := r[0 ~> 115792089237316195423570985008687907853269984665640564039457584007913129639935]%zrange.
+  Local Set Printing Width 500.
+  Redirect "Crypto.Fancy.Montgomery256.montred256" Print Montgomery256.montred256.
+End with_notations.
 
 Import Registers.
 
@@ -281,10 +291,8 @@ Redirect "Crypto.Fancy.Montgomery256.Prod.MontRed256" Eval cbv beta iota delta [
        Ret lo
  *)
 
-(* Uncomment to see proof statement and remaining admitted statements,
+(* Remove Redirect to see proof statement and remaining admitted statements,
 or search for "prod_montred256_correct" to see comments on the proof
 preconditions. *)
-(*
-Check Montgomery256.prod_montred256_correct.
-Print Assumptions Montgomery256.prod_montred256_correct.
-*)
+Redirect "Crypto.Fancy.Montgomery256.prod_montred256_correct" Check Montgomery256.prod_montred256_correct.
+Redirect "Crypto.Fancy.Montgomery256.prod_montred256_correct.Assumptions" Print Assumptions Montgomery256.prod_montred256_correct.

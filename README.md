@@ -1,44 +1,79 @@
 Fiat-Crypto: Synthesizing Correct-by-Construction Code for Cryptographic Primitives
-=====
+===================================================================================
 
 Building
------
-[![Build Status](https://api.travis-ci.org/mit-plv/fiat-crypto.png?branch=master)](https://travis-ci.org/mit-plv/fiat-crypto)
+--------
+[![CI (Coq)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq.yml?query=branch%3Amaster)
+[![CI (Coq, Windows)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-windows.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-windows.yml?query=branch%3Amaster)
+[![CI (Coq, MacOS)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-macos.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-macos.yml?query=branch%3Amaster)
 
-This repository requires coq 8.9 or later. 8.7 may work, but we don't use it ourselves.
+[![Zulip][zulip-shield]][zulip-link]
+[![Rust Crate][crate-shield]][crate-link]
+[![Go Reference][pkg.go-shield]][pkg.go-link]
+
+[zulip-shield]: https://img.shields.io/badge/chat-on%20zulip-informational.svg
+[zulip-link]: https://coq.zulipchat.com/#narrow/stream/247791-fiat-crypto
+
+[crate-shield]: https://img.shields.io/crates/v/fiat-crypto.svg
+[crate-link]: https://crates.io/crates/fiat-crypto
+
+[pkg.go-shield]: https://pkg.go.dev/badge/github.com/mit-plv/fiat-crypto/fiat-go.svg
+[pkg.go-link]: https://pkg.go.dev/github.com/mit-plv/fiat-crypto/fiat-go
+
+This repository requires [Coq](https://coq.inria.fr/) [8.15](https://github.com/coq/coq/releases/tag/V8.15.0) or later.
+Note that if you install Coq from Ubuntu aptitude packages, you need `libcoq-ocaml-dev` in addition to `coq`.
+Note that in some cases (such as installing Coq via homebrew on Mac), you may also need to install `ocaml-findlib` (for `ocamlfind`).
+If you want to build the bedrock2 code, you need [Coq 8.15](https://github.com/coq/coq/releases/tag/V8.15.0) or later (otherwise this code will be skipped automatically; you can skip this code on newer versions of Coq by passing `SKIP_BEDROCK2=1` to `make`).
+The extracted OCaml code for the standalone binaries requires [OCaml](https://ocaml.org/) [4.08](https://ocaml.org/p/ocaml/4.08.0) or later.
+We suggest downloading [the latest version of Coq](https://github.com/coq/coq/wiki#coq-installation).
+Generation of JSON code via the Makefile also requires `jq`.
+
+Alternatively, choose your package-manager to install dependencies:
+
+Package Manager | Command Line Invocation |
+--|--|
+Aptitude (Ubuntu / Debian) | `apt install coq ocaml-findlib libcoq-ocaml-dev jq` |
+Homebrew (OS X) | `brew install coq ocaml-findlib coreutils jq` |
+Pacman (Archlinux) | `pacman -S coq ocaml-findlib ocaml-zarith jq` |
+
+You can clone this repository with
+
+    git clone --recursive https://github.com/mit-plv/fiat-crypto.git
 
 Git submodules are used for some dependencies. If you did not clone with `--recursive`, run
 
     git submodule update --init --recursive
 
-To build (if your COQPATH variable is empty):
+from inside the repository.
+Then run:
 
-       make
+    make
 
-To build:
+You can check out [our CI](https://github.com/mit-plv/fiat-crypto/actions?query=branch%3Amaster+workflow%3A%22CI+%28Coq%29%22) to see how long the build should take; as of the last update to this line in the README, it takes about 1h10m to run `make -j2` on Coq 8.11.1.
 
-       export COQPATH="$(pwd)/coqprime/src:$(pwd)/bedrock2/bedrock2/src:$(pwd)/bedrock2/deps/coqutil/src${COQPATH:+:}$COQPATH"
-       make
+If you want to build only the command-line binaries used for generating code, you can save a bit of time by making only the `standalone-ocaml` target with
 
-Usage
------
+    make standalone-ocaml
+
+Usage (Generating C Files)
+--------------------------
 
 The Coq development builds binary compilers that generate code using some implementation strategy.
-The parameters (modulus, hardware multiplication input bitwidth, etc.) are are specified on the command line of the compiler.
+The parameters (modulus, hardware multiplication input bitwidth, etc.) are specified on the command line of the compiler.
 The generated C code is written to standard output.
 
 A collection of C files for popular curves can be made with
 
     make c-files
 
-The C files will appear in the top-level directory.
+The C files will appear in [`fiat-c/src/`](./fiat-c/src/).
 
 Just the compilers generating these C files can be made with
 
-    make standalone
+    make standalone-ocaml
 
-or `make standalone-haskell` or `make standalone-ocaml` for binaries generated with just one compiler.
-The binaries are located in `src/ExtractionOcaml/` and `src/ExtractionHaskell` respectively.
+or `make standalone-haskell` for compiler binaries generated with Haskell, or `make standalone` for both the Haskell and OCaml compiler binaries.
+The binaries are located in `src/ExtractionOcaml/` and `src/ExtractionHaskell/` respectively.
 
 There is a separate compiler binary for each implementation strategy:
 
@@ -51,23 +86,138 @@ Passing no arguments, or passing `-h` or `--help` (or any other invalid argument
 Here are some examples of ways to invoke the binaries (from the directories that they live in):
 
     # Generate code for 2^255-19
-    ./unsaturated_solinas '25519' '5' '2^255 - 19' '64' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_64.c
-    ./unsaturated_solinas '25519' '10' '2^255 - 19' '32' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_32.c
+    ./unsaturated_solinas '25519' '64' '5' '2^255 - 19' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_64.c
+    ./unsaturated_solinas '25519' '32' '10' '2^255 - 19' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_32.c
 
     # Generate code for NIST-P256 (2^256 - 2^224 + 2^192 + 2^96 - 1)
-    ./word_by_word_montgomery 'p256' '2^256 - 2^224 + 2^192 + 2^96 - 1' '32' > p256_32.c
-    ./word_by_word_montgomery 'p256' '2^256 - 2^224 + 2^192 + 2^96 - 1' '64' > p256_64.c
+    ./word_by_word_montgomery 'p256' '32' '2^256 - 2^224 + 2^192 + 2^96 - 1' > p256_32.c
+    ./word_by_word_montgomery 'p256' '64' '2^256 - 2^224 + 2^192 + 2^96 - 1' > p256_64.c
 
-You can find more examples in the `Makefile`.
+You can find more examples in the [`Makefile`](./Makefile).
+
+Note that for large primes, you may need to increase the stack size to avoid stack overflows.  For example:
+
+    ulimit -S -s 1048576; ./word_by_word_montgomery --static gost_512_paramSetB 32 '2^511 + 111'
+
+This sets the stack size to 1 GB (= 1024 MB = 1024 * 1024 KB = 1048576 KB) before running the command.
+As of the last edit of this line, this command takes about an hour to run, but does in fact complete successfully.
+Without a sufficiently large stack-size, it instead stack overflows.
+
+Usage (Generating Bedrock2 Files)
+---------------------------------
+Output is supported to the research language [bedrock2](https://github.com/mit-plv/bedrock2).
+The Coq development builds binary compilers that generate code using some implementation strategy.
+The parameters (modulus, hardware multiplication input bitwidth, etc.) are specified on the command line of the compiler.
+The generated bedrock2 code is then written to standard output using the bedrock2 C backend.
+
+A collection of bedrock2/C files for popular curves can be made with
+
+    make bedrock2-files
+
+The bedrock2/C files will appear in [`fiat-bedrock2/src/`](./fiat-bedrock2/src/).
+
+Just the compilers generating these bedrock2/C files can be made with
+
+    make standalone-ocaml
+
+or `make standalone-haskell` for binaries generated with Haskell, or `make standalone` for both the Haskell and OCaml binaries.
+The binaries are located in `src/ExtractionOcaml/` and `src/ExtractionHaskell` respectively.
+
+There is a separate compiler binary for each implementation strategy:
+
+ - `bedrock2_saturated_solinas`
+ - `bedrock2_unsaturated_solinas`
+ - `bedrock2_word_by_word_montgomery`
+
+Passing no arguments, or passing `-h` or `--help` (or any other invalid arguments) will result in a usage message being printed.  These binaries output bedrock2/C code on stdout.
+
+Here are some examples of ways to invoke the binaries (from the directories that they live in):
+
+    # Generate code for 2^255-19
+    ./bedrock2_unsaturated_solinas --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select '25519' '64' '5' '2^255 - 19' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_64.c
+    ./bedrock2_unsaturated_solinas --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select '25519' '32' '10' '2^255 - 19' carry_mul carry_square carry_scmul121666 carry add sub opp selectznz to_bytes from_bytes > curve25519_32.c
+
+    # Generate code for NIST-P256 (2^256 - 2^224 + 2^192 + 2^96 - 1)
+    ./bedrock2_word_by_word_montgomery --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select 'p256' '32' '2^256 - 2^224 + 2^192 + 2^96 - 1' > p256_32.c
+    ./bedrock2_word_by_word_montgomery --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select 'p256' '64' '2^256 - 2^224 + 2^192 + 2^96 - 1' > p256_64.c
+
+    # Generate code for 2^130 - 5
+    ./bedrock2_unsaturated_solinas --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select 'poly1305' '64' '3' '2^130 - 5' > poly1305_64.c
+    ./bedrock2_unsaturated_solinas --no-wide-int --widen-carry --widen-bytes --split-multiret --no-select 'poly1305' '32' '5' '2^130 - 5' > poly1305_32.c
+
+You can find more examples in the [`Makefile`](./Makefile).
+
+License
+-------
+
+Fiat-Crypto is distributed under the terms of the MIT License, the Apache License (Version 2.0), and the BSD 1-Clause License; users may pick which license to apply.
+
+See [`COPYRIGHT`](./COPYRIGHT), [`LICENSE-MIT`](./LICENSE-MIT), [`LICENSE-APACHE`](./LICENSE-APACHE), and [`LICENSE-BSD-1`](./LICENSE-BSD-1) for details.
+
+
+Extended Build Instructions
+---------------------------
+
+If your `COQPATH` variable is not empty, you can build with:
+
+    export COQPATH="$(pwd)/rewriter/src:$(pwd)/coqprime/src:$(pwd)/bedrock2/bedrock2/src:$(pwd)/bedrock2/deps/coqutil/src${COQPATH:+:}$COQPATH"
+    make
 
 Reading About The Code
 ----------------------
 
 - [Andres Erbsen, Jade Philipoom, Jason Gross, Robert Sloan, Adam Chlipala. Simple High-Level Code For Cryptographic Arithmetic -- With Proofs, Without Compromises. To Appear in Proceedings of the IEEE Symposium on Security & Privacy 2019 (S&P'19). May 2019.](http://adam.chlipala.net/papers/FiatCryptoSP19/FiatCryptoSP19.pdf). This paper describes multiple field arithmetic implementations, and an older version of the compilation pipeline (preserved [here](https://github.com/mit-plv/fiat-crypto/tree/sp2019latest)). It is somewhat space-constrained, so some details are best read about in theses below.
 - [Jade Philipoom. Correct-by-Construction Finite Field Arithmetic in Coq. MIT Master's Thesis. February 2018.](http://adam.chlipala.net/theses/jadep_meng.pdf) Chapters 3 and 4 contain a detailed walkthrough of the field arithmetic implementations (again, targeting the previous compilation pipeline).
-- [Andres Erbsen. Crafting Certified Elliptic CurveCryptography Implementations in Coq. MIT Master's Thesis. June 2017.](
-http://adam.chlipala.net/theses/andreser_meng.pdf) Section 3 contains a whirlwind introduction to synthesizing field arithmetic code using coq, without assuming Coq skills, but covering a tiny fraction of the overall library. Sections 5 and 6 contain the only write-up on the ellitpic-curve library in this repository.
-- The newest compilation pipeline does not have a separate document yet, but this README does go over it in some detail.
+- [Andres Erbsen. Crafting Certified Elliptic Curve Cryptography Implementations in Coq. MIT Master's Thesis. June 2017.](
+http://adam.chlipala.net/theses/andreser_meng.pdf) Section 3 contains a whirlwind introduction to synthesizing field arithmetic code using coq, without assuming Coq skills, but covering a tiny fraction of the overall library. Sections 5 and 6 contain the only write-up on the elliptic-curve library in this repository.
+- [Jason Gross. Performance Engineering of Proof-Based Software Systems at Scale. MIT Doctoral Thesis. February 2021.](http://adam.chlipala.net/theses/jgross.pdf) Chapters 4 and 5 describe the reflective program transformation framework at the center of the newest compilation pipeline.
+- The newest compilation pipeline as a whole does not have a separate document yet, but this README does go over it in some detail.
+
+
+Status of Backends
+------------------
+
+Fiat Cryptography contains a number of backends; the final step of the pipeline is transforming from straight-line C-like code to expressions in whatever language is being targeted.
+The Bedrock2 backend comes with proofs that the Bedrock2 AST matches the semantics of our internal AST, but none of the other backends have any proofs about them.
+While the transformations are not particularly involved, and our proofs ensure that we have picked integer sizes large enough to store values at each operation, there is no verification that the particular integer size casts that we emit are sufficient to ensure that gcc, clang, or whatever compiler is used on the code correctly selects integer sizes for expressions correctly.
+Note that even the C code printed by the Bedrock2 backend does not have proofs that the conversion to strings is correct.
+
+Hence we provide here a table of the extent to which the various backends are maintained, tested, and proven.
+A :heavy_check_mark: in "maintainer" means that the Fiat Cryptography maintainers are fully maintaining and testing the backend; :white_check_mark: means maintenance by external contributors.
+We do not provide any quality guarantees for code generated by the backends.
+
+Backend | Maintainer / Person of Contact | Build Checked by CI | Generated Code Tested | Internal AST Proven Correct
+:-- | :-- | :-- | :-- | :--
+C | :heavy_check_mark: @JasonGross / entire team | :heavy_check_mark: | :heavy_check_mark: (BoringSSL test-suite) |
+Bedrock2/C | :heavy_check_mark: @andres-erbsen / entire team | :heavy_check_mark: | :heavy_check_mark: (BoringSSL test-suite) | :heavy_check_mark:
+Go | :white_check_mark: @mdempsky | :heavy_check_mark: | |
+Java | :x: Unmaintained | :heavy_check_mark: | :x: Known Buggy [#707](https://github.com/mit-plv/fiat-crypto/issues/707#issuecomment-763098543) |
+JSON | Experimental | :white_check_mark: (only syntax) | |
+Rust | :white_check_mark: | :heavy_check_mark: | :heavy_check_mark: ([Dalek Cryptography test-suite](https://github.com/dalek-cryptography/curve25519-dalek)) |
+Zig | :white_check_mark: @jedisct1 | :heavy_check_mark: | :white_check_mark: ([Zig standard library](https://github.com/ziglang/zig/tree/master/lib/std/crypto/pcurves) (generated file [here](https://github.com/ziglang/zig/blob/master/lib/std/crypto/pcurves/p256/p256_64.zig)) (main CI [here](https://dev.azure.com/ziglang/zig/_build?definitionId=1&_a=summary&repositoryFilter=1&branchFilter=5%2C5%2C5%2C5%2C5%2C5%2C5%2C5))) |
+
+### Contributing a new backend
+
+We weclome new backends (as long as you're willing to maintain them).
+We hope that the process of contributing a new backend is not too painful, and welcome feedback on how the process could be streamlined.
+To contribute a new backend, follow the following steps (perhaps using, for example, [#936](https://github.com/mit-plv/fiat-crypto/pull/936), [#660](https://github.com/mit-plv/fiat-crypto/pull/660), [#638](https://github.com/mit-plv/fiat-crypto/pull/638), or [#570](https://github.com/mit-plv/fiat-crypto/pull/570) as examples):
+- Add a new file to [`src/Stringification/`](./src/Stringification/) for your language, modeled after the existing file of your choice
+- Run `git add` on your new file and then `make update-_CoqProject` to have the build system track your file
+- Update [`src/CLI.v`](./src/CLI.v) to `Require Import` your file and add your language to [the list `default_supported_languages`](https://github.com/mit-plv/fiat-crypto/blob/8944697db11055abeeba252782d2bfd1e2b844cd/src/CLI.v#L212-L219) so that it can be passed to the binaries as an argument to `--lang`
+- Update the `Makefile` in the following ways:
+  - Consider adding a variable near `CARGO_BUILD` for the build invocation
+  - Add targets to `.PHONY` analogous to `c-files`, `lite-c-files`, `test-c-files`, `only-test-c-files`
+  - Add a variables analogous to `C_DIR`, `ALL_C_FILES`, and `LITE_C_FILES` for your language's generated files
+  - Add targets analogous to `c-files` and `lite-c-files` and make `generated-files` and `lite-generated-files` depend on those targets respectively
+  - Add build rules for `ALL_<YOUR-LANGUAGE>_FILES`
+  - Add targets for `test-<your-language>-files` and `only-test-<your-language>-files`; both targets should have the same build rule, but `test-<your-language>-files` should depend on all the generated files of your language, while `only-test-<your-language>-files` should not have any build rule dependencies.
+  - If you are developing a package, you can look for uses of `COPY_TO_FIAT_RUST` or `COPY_TO_FIAT_GO` to see how license files are copied
+- Run `make` to generate all the relevant files of your language, and add the generated files to git
+- Update `.gitignore` to ignore any compiled files generated by the compiler of your language (analogous to `.o` and `.a` for C)
+- Create a file in [`.github/workflows/`](./.github/workflows/) like [`c.yml`](./.github/workflows/c.yml), [`go.yml`](./.github/workflows/go.yml), [`rust.yml`](./.github/workflows/rust.yml), etc, to test at least that the generated code compiles.
+  - Optionally, also test the built code against some external project's crypto unit tests
+- Update [`.gitattributes`](./.gitattributes) to mark your language's generated files as `text` and to mark the paths of the generated files as `linguist-generated` so that diffs don't clog up PR displays.
+- Add your language to the table in preceeding section of the README indicating the status of your backend and marking your GitHub username as the maintainer.
 
 
 Reading The Code
@@ -165,7 +315,7 @@ The files contain:
   + EliminateDead (dead code elimination)
   + Subst01 (substitute let-binders used 0 or 1 times)
 
-- `Rewriter/*.v`: rewrite rules, rewriting.  See below for actual stucture
+- `Rewriter/*.v`: rewrite rules, rewriting.  See below for actual structure
   of files.  Defines the passes:
   + RewriteNBE
   + RewriteArith
@@ -189,7 +339,7 @@ The files contain:
     . utilities for inverting PHOAS exprs
     . default/dummy values of PHOAS exprs
     . default instantiation of generic PHOAS types
-    . gallina reification of ground terms
+    . Gallina reification of ground terms
     . Flat/indexed syntax trees, and conversions to and from PHOAS
 
     Defines the passes:
@@ -291,7 +441,7 @@ The files contain:
   reify and apply things from the cache.
 
 - `PushButtonSynthesis/*`: Reifies the various operations from
-  `Arithmetic.v`, definies the compositions of the BoundsPipeline with
+  `Arithmetic.v`, defines the compositions of the BoundsPipeline with
   these operations, proves that their interpretations satisfies the
   specs from `COperationSpecifications.v`, assembles the reified
   post-bounds operations into synthesis targets.  These are the files
@@ -302,7 +452,7 @@ The files contain:
       re-reify big terms every time we change the pipeline or
       intermediate stages thereof.
   + `InvertHighLow.v`:
-      Defines some common definitions, around plitting apart high and
+      Defines some common definitions, around splitting apart high and
       low bits of things, for Barrett and FancyMontgomeryReduction.
   + `Primitives.v`:
       Specializes the pipeline to basic "primitive" operations such as
@@ -448,11 +598,11 @@ For `Language.v`, there is a semi-arbitrary split between two files
      indexed over type codes, in a way that preserves information
      about the type of `e`, and generally works even when the goal is
      dependently typed over `e` and/or its type
-  + `ident.invert`, which does case-anaylsis on idents whose type has
+  + `ident.invert`, which does case-analysis on idents whose type has
     structure (i.e., is not a var)
   + `ident.invert_match`, which does case-analysis on idents appearing as
     the discriminee of a `match` in the goal or in any hypothesis
-  + `expr.invert`, which does case-anaylsis on exprs whose type has
+  + `expr.invert`, which does case-analysis on exprs whose type has
     structure (i.e., is not a var)
   + `expr.invert_match`, which does case-analysis on exprs appearing as
     the discriminee of a `match` in the goal or in any hypothesis

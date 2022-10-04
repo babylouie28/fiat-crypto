@@ -24,10 +24,11 @@ Require Import Crypto.PushButtonSynthesis.Primitives.
 Require Import Crypto.PushButtonSynthesis.BarrettReductionReificationCache.
 Require Import Crypto.PushButtonSynthesis.InvertHighLow.
 Import ListNotations.
-Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope bool_scope.
+Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope bool_scope.
 
 Import
   Language.Compilers
+  Language.Wf.Compilers
   Stringification.Language.Compilers.
 Import Compilers.API.
 
@@ -43,7 +44,11 @@ Local Opaque reified_barrett_red_gen. (* needed for making [autorewrite] not tak
 Section rbarrett_red.
   Context {output_language_api : ToString.OutputLanguageAPI}
           {static : static_opt}
-          (M machine_wordsize : Z).
+          {internal_static : internal_static_opt}
+          {inline : inline_opt}
+          {inline_internal : inline_internal_opt}
+          (M : Z)
+          (machine_wordsize : machine_wordsize_opt).
 
   Let value_range := r[0 ~> (2^machine_wordsize - 1)%Z]%zrange.
   Let flag_range := r[0 ~> 1]%zrange.
@@ -56,7 +61,20 @@ Section rbarrett_red.
     := [1; machine_wordsize / 2; machine_wordsize; 2 * machine_wordsize]%Z.
   Let possible_values := possible_values_of_machine_wordsize.
 
+  Local Existing Instance default_language_naming_conventions.
+  Local Existing Instance default_documentation_options.
+  Local Existing Instance default_output_options.
+  Local Existing Instance AbstractInterpretation.default_Options.
+  Local Instance widen_carry : widen_carry_opt := false.
+  Local Instance widen_bytes : widen_bytes_opt := true.
+  Local Instance only_signed : only_signed_opt := false.
+  Local Instance no_select_size : no_select_size_opt := None.
   Local Instance split_mul_to : split_mul_to_opt := None.
+  Local Instance split_multiret_to : split_multiret_to_opt := None.
+  Local Instance unfold_value_barrier : unfold_value_barrier_opt := true.
+  Local Instance assembly_hints_lines : assembly_hints_lines_opt := [].
+  Local Instance ignore_unique_asm_names : ignore_unique_asm_names_opt := false.
+  Local Instance low_level_rewriter_method : low_level_rewriter_method_opt := default_low_level_rewriter_method.
 
   Let fancy_args
     := (Some {| Pipeline.invert_low log2wordsize := invert_low log2wordsize consts_list;
@@ -104,7 +122,7 @@ Section rbarrett_red.
 
   (** Note: If you change the name or type signature of this
         function, you will need to update the code in CLI.v *)
-  Definition check_args {T} (res : Pipeline.ErrorT T)
+  Definition check_args {T} (requests : list string) (res : Pipeline.ErrorT T)
     : Pipeline.ErrorT T
     := fold_right
          (fun '(b, e) k => if b:bool then Error e else k)
@@ -117,6 +135,7 @@ Section rbarrett_red.
             (negb ((2 * (((2 ^ 2) ^ machine_wordsize) mod M) <=? 2 ^ (machine_wordsize + 1) - (muLow + 2 ^ machine_wordsize)))%Z, Pipeline.Value_not_leZ ("(2 * ((2 ^ 2) ^ machine_wordsize) mod M)  2 ^ (machine_wordsize + 1) - (muLow + 2 ^ machine_wordsize)") (2 * (((2 ^ 2) ^ machine_wordsize) mod M)) (2 ^ (machine_wordsize + 1) - (muLow + 2 ^ machine_wordsize))) ].
 
   Local Arguments Z.mul !_ !_.
+
   Local Ltac use_curve_good_t :=
     repeat first [ assumption
                  | progress cbv [EquivModulo.Z.equiv_modulo]
@@ -128,7 +147,8 @@ Section rbarrett_red.
                  | solve [ auto with zarith ]
                  | rewrite Z.log2_pow2 by use_curve_good_t ].
 
-  Context (curve_good : check_args (Success tt) = Success tt).
+  Context (requests : list string)
+          (curve_good : check_args requests (Success tt) = Success tt).
 
   Lemma use_curve_good
     : 1 < machine_wordsize
@@ -137,19 +157,7 @@ Section rbarrett_red.
       /\ 2 ^ (machine_wordsize - 1) < M < 2 ^ machine_wordsize
       /\ 2 * ((2 ^ 2) ^ machine_wordsize mod M) <= 2 ^ (machine_wordsize + 1) - (muLow + 2 ^ machine_wordsize).
   Proof using curve_good.
-    clear -curve_good.
-    cbv [check_args fold_right] in curve_good.
-    break_innermost_match_hyps; try discriminate.
-    rewrite Bool.negb_false_iff in *.
-    Z.ltb_to_lt.
-    intros.
-    repeat apply conj.
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
+    prepare_use_curve_good ().
     { use_curve_good_t. }
   Qed.
 
@@ -160,8 +168,8 @@ Section rbarrett_red.
          possible_values
          (reified_barrett_red_gen
             @ GallinaReify.Reify M
-            @ GallinaReify.Reify machine_wordsize
-            @ GallinaReify.Reify machine_wordsize
+            @ GallinaReify.Reify (machine_wordsize:Z)
+            @ GallinaReify.Reify (machine_wordsize:Z)
             @ GallinaReify.Reify 1%nat
             @ GallinaReify.Reify [muLow;1]
             @ GallinaReify.Reify [M])
@@ -169,10 +177,10 @@ Section rbarrett_red.
          bound.
 
   Definition sbarrett_red (prefix : string)
-    : string * (Pipeline.ErrorT (list string * ToString.ident_infos))
+    : string * (Pipeline.ErrorT (Pipeline.ExtendedSynthesisResult _))
     := Eval cbv beta in
-        FromPipelineToString
-          prefix "barrett_red" barrett_red
+        FromPipelineToString!
+          machine_wordsize prefix "barrett_red" barrett_red
           (fun _ _ _ => @nil string).
 
   Local Ltac solve_barrett_red_preconditions :=
@@ -189,6 +197,7 @@ Section rbarrett_red.
                  | rewrite Z.pow_mul_r by lia ].
 
   Local Strategy -100 [barrett_red]. (* needed for making Qed not take forever *)
+  Local Opaque expr.Interp. (* to prevent [autorewrite with interp_gen_cache] from taking forever *)
   Lemma barrett_red_correct res (Hres : barrett_red = Success res)
     : barrett_red_correct machine_wordsize M (API.Interp res).
   Proof using M curve_good.
@@ -196,8 +205,24 @@ Section rbarrett_red.
     assert (1 < machine_wordsize) by apply use_curve_good.
     pose proof (Z.mod_pos_bound mu (2^machine_wordsize) ltac:(lia)).
     rewrite <-Fancy.fancy_reduce_correct with (mu := muLow + 2^machine_wordsize) (width:=machine_wordsize) (sz:=1%nat) (mut:=[muLow;1]) (Mt:=[M]) by solve_barrett_red_preconditions.
+    remember Fancy.fancy_reduce eqn:?. (* to prevent [reflexivity] from taking forever *)
     prove_correctness' ltac:(fun _ => idtac) use_curve_good.
+    { subst; reflexivity. }
     { cbv [ZRange.type.base.option.is_bounded_by ZRange.type.base.is_bounded_by bound is_bounded_by_bool value_range upper lower]. rewrite Bool.andb_true_iff, !Z.leb_le. lia. }
     { cbv [ZRange.type.base.option.is_bounded_by ZRange.type.base.is_bounded_by bound is_bounded_by_bool value_range upper lower]. rewrite Bool.andb_true_iff, !Z.leb_le. lia. }
   Qed.
+
+  Lemma Wf_barrett_red res (Hres : barrett_red = Success res) : Wf res.
+  Proof using Type. prove_pipeline_wf (). apply fancy_args_good. Qed.
 End rbarrett_red.
+
+Module Export Hints.
+#[global]
+  Hint Opaque
+       barrett_red
+  : wf_op_cache.
+#[global]
+  Hint Immediate
+       Wf_barrett_red
+  : wf_op_cache.
+End Hints.

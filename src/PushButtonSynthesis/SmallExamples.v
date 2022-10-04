@@ -21,6 +21,13 @@ Import Compilers.API.
 Import Associational Positional.
 
 Local Instance : split_mul_to_opt := None.
+Local Instance : split_multiret_to_opt := None.
+Local Instance : unfold_value_barrier_opt := true.
+Local Instance : assembly_hints_lines_opt := [].
+Local Instance : ignore_unique_asm_names_opt := false.
+Local Instance : only_signed_opt := false.
+Local Instance : no_select_size_opt := None.
+Local Existing Instance default_low_level_rewriter_method.
 
 Time Redirect "log" Compute
      (Pipeline.BoundsPipeline
@@ -63,64 +70,91 @@ Time Redirect "log" Compute
                ZRange.type.base.option.None).
 
 Local Existing Instance ToString.C.OutputCAPI.
+Local Existing Instance default_language_naming_conventions.
+Local Existing Instance default_documentation_options.
+Local Existing Instance default_output_options.
+Local Existing Instance AbstractInterpretation.default_Options.
+Local Instance : package_name_opt := None.
+Local Instance : class_name_opt := None.
 Local Instance : static_opt := true.
+Local Instance : internal_static_opt := true.
+Local Instance : inline_opt := true.
+Local Instance : inline_internal_opt := true.
 Local Instance : emit_primitives_opt := true.
 
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_mulx_u64"
-        true None [64; 128]
+        true true None [64; 128] 64
         ltac:(let r := Reify (mulx 64) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>2^64-1], (Some r[0~>2^64-1], tt))%zrange
-               (Some r[0~>2^64-1], Some r[0~>2^64-1])%zrange).
+               (Some r[0~>2^64-1], Some r[0~>2^64-1])%zrange
+               (None, (None, tt))
+               (None, None)
+   : Pipeline.ErrorT _).
 
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_addcarryx_u64"
-        true None [1; 64; 128]
+        true true None [1; 64; 128] 64
         ltac:(let r := Reify (addcarryx 64) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>1], (Some r[0~>2^64-1], (Some r[0~>2^64-1], tt)))%zrange
-               (Some r[0~>2^64-1], Some r[0~>1])%zrange).
+               (Some r[0~>2^64-1], Some r[0~>1])%zrange
+               (None, (None, (None, tt)))
+               (None, None)
+   : Pipeline.ErrorT _).
 
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_addcarryx_u51"
-        true None [1; 64; 128]
+        true true None [1; 64; 128] 64
         ltac:(let r := Reify (addcarryx 51) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>1], (Some r[0~>2^51-1], (Some r[0~>2^51-1], tt)))%zrange
-               (Some r[0~>2^51-1], Some r[0~>1])%zrange).
+               (Some r[0~>2^51-1], Some r[0~>1])%zrange
+               (None, (None, (None, tt)))
+               (None, None)
+   : Pipeline.ErrorT _).
 
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_subborrowx_u64"
-        true None [1; 64; 128]
+        true true None [1; 64; 128] 64
         ltac:(let r := Reify (subborrowx 64) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>1], (Some r[0~>2^64-1], (Some r[0~>2^64-1], tt)))%zrange
-               (Some r[0~>2^64-1], Some r[0~>1])%zrange).
+               (Some r[0~>2^64-1], Some r[0~>1])%zrange
+               (None, (None, (None, tt)))
+               (None, None)
+   : Pipeline.ErrorT _).
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_subborrowx_u51"
-        true None [1; 64; 128]
+        true true None [1; 64; 128] 64
         ltac:(let r := Reify (subborrowx 51) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>1], (Some r[0~>2^51-1], (Some r[0~>2^51-1], tt)))%zrange
-               (Some r[0~>2^51-1], Some r[0~>1])%zrange).
+               (Some r[0~>2^51-1], Some r[0~>1])%zrange
+               (None, (None, (None, tt)))
+               (None, None)
+   : Pipeline.ErrorT _).
 
 Time Redirect "log" Compute
   (Pipeline.BoundsPipelineToString
      "fiat_" "fiat_cmovznz64"
-        true None [1; 64; 128]
+        true true None [1; 64; 128] 64
         ltac:(let r := Reify (cmovznz 64) in
               exact r)
                (fun _ _ => [])
                (Some r[0~>1], (Some r[0~>2^64-1], (Some r[0~>2^64-1], tt)))%zrange
-               (Some r[0~>2^64-1])%zrange).
+               (Some r[0~>2^64-1])%zrange
+               (None, (None, (None, tt)))
+               None
+   : Pipeline.ErrorT _).

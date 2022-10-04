@@ -9,6 +9,7 @@ Require Import Crypto.Util.Tactics.DestructHead.
 Require Import Crypto.Util.Tactics.DestructHyps.
 Require Import Crypto.Util.Tactics.BreakMatch.
 
+Declare Scope reified_prop_scope.
 Delimit Scope reified_prop_scope with reified_prop.
 Inductive reified_Prop := rTrue | rFalse | rAnd (x y : reified_Prop) | rOr (x y : reified_Prop) | rImpl (x y : reified_Prop) | rForall {T} (f : T -> reified_Prop) | rEq {T} (x y : T) | inject (_ : Prop).
 Bind Scope reified_prop_scope with reified_Prop.
@@ -30,26 +31,30 @@ Coercion reified_Prop_of_bool (x : bool) : reified_Prop
 
 Definition and_reified_Prop (x y : reified_Prop) : reified_Prop
   := match x, y with
-     | rTrue, y => y
-     | x, rTrue => x
-     | rFalse, y => rFalse
-     | x, rFalse => rFalse
+     | rTrue, x
+     | x, rTrue
+       => x
+     | rFalse, _
+     | _, rFalse
+       => rFalse
      | rEq T a b, rEq T' a' b' => rEq (a, a') (b, b')
      | x', y' => rAnd x' y'
      end.
 Definition or_reified_Prop (x y : reified_Prop) : reified_Prop
   := match x, y with
-     | rTrue, y => rTrue
-     | x, rTrue => rTrue
-     | rFalse, y => y
-     | x, rFalse => x
+     | rTrue, _
+     | _, rTrue
+       => rTrue
+     | rFalse, x
+     | x, rFalse
+       => x
      | x', y' => rOr x' y'
      end.
 Definition impl_reified_Prop (x y : reified_Prop) : reified_Prop
   := match x, y with
      | rTrue, y => y
-     | x, rTrue => rTrue
-     | rFalse, y => rTrue
+     | _, rTrue => rTrue
+     | rFalse, _ => rTrue
      | rImpl x rFalse, rFalse => x
      | x', y' => rImpl x' y'
      end.

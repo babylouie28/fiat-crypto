@@ -1,12 +1,16 @@
 Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import Crypto.Util.ZUtil.Definitions.
+Require Import Crypto.Util.ZUtil.Ltz.
 Require Import Crypto.Util.ZUtil.Hints.ZArith.
+Require Import Crypto.Util.ZUtil.Modulo.PullPush.
 Require Import Crypto.Util.Prod.
 Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
 Require Import Crypto.Util.ZUtil.Tactics.DivModToQuotRem.
 Require Import Crypto.Util.ZUtil.Tactics.LtbToLt.
 Require Import Crypto.Util.LetIn.
 Require Import Crypto.Util.Tactics.BreakMatch.
+Require Import Crypto.Util.Tactics.DestructHead.
+Require Import Crypto.Util.Tactics.SpecializeBy.
 Require Import Crypto.Util.Tactics.RewriteHyp.
 Local Open Scope Z_scope.
 
@@ -34,12 +38,12 @@ Module Z.
       unfold Let_In, ADD, ADC, Z.get_carry, Z.add_with_carry; simpl.
       destruct (Z_dec bitwidth 0) as [ [?|?] | ? ].
       { rewrite Z.pow_neg_r by assumption.
-        autorewrite with zsimplify.
+        autorewrite with zsimplify. rewrite ?Z.add_assoc.
         reflexivity. }
       { f_equal.
-        { push_Zmod; pull_Zmod; apply f_equal2; omega. }
+        { push_Zmod; pull_Zmod; apply f_equal2; lia. }
         { Z.div_mod_to_quot_rem_in_goal; nia. } }
-      { subst; autorewrite with zsimplify; f_equal; omega. }
+      { subst; autorewrite with zsimplify; f_equal; lia. }
     Qed.
 
     Lemma add_get_carry_to_add_with_get_carry_cps {T} c a b (P : Z -> Z -> T)
@@ -69,21 +73,25 @@ Module Z.
   Lemma add_get_carry_full_mod s x y :
     fst (Z.add_get_carry_full s x y)  = (x + y) mod s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite add_get_carry_full_mod : to_div_mod.
 
   Lemma add_get_carry_full_div s x y :
     snd (Z.add_get_carry_full s x y)  = (x + y) / s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite add_get_carry_full_div : to_div_mod.
 
   Lemma add_with_get_carry_full_mod s c x y :
     fst (Z.add_with_get_carry_full s c x y)  = (c + x + y) mod s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite add_with_get_carry_full_mod : to_div_mod.
 
   Lemma add_with_get_carry_full_div s c x y :
     snd (Z.add_with_get_carry_full s c x y)  = (c + x + y) / s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite add_with_get_carry_full_div : to_div_mod.
 
   Lemma sub_with_borrow_to_add_get_carry c x y
@@ -93,21 +101,48 @@ Module Z.
   Lemma sub_get_borrow_full_mod s x y :
     fst (Z.sub_get_borrow_full s x y)  = (x - y) mod s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite sub_get_borrow_full_mod : to_div_mod.
 
   Lemma sub_get_borrow_full_div s x y :
     snd (Z.sub_get_borrow_full s x y)  = - ((x - y) / s).
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite sub_get_borrow_full_div : to_div_mod.
 
   Lemma sub_with_get_borrow_full_mod s c x y :
     fst (Z.sub_with_get_borrow_full s c x y)  = (x - y - c) mod s.
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite sub_with_get_borrow_full_mod : to_div_mod.
 
   Lemma sub_with_get_borrow_full_div s c x y :
     snd (Z.sub_with_get_borrow_full s c x y)  = - ((x - y - c) / s).
   Proof. easypeasy. Qed.
+#[global]
   Hint Rewrite sub_with_get_borrow_full_div : to_div_mod.
 
+  Lemma add_get_carry_full_ltz_1 s x y :
+    0 <= x < s
+    -> 0 <= y < s
+    -> snd (Z.add_get_carry_full s x y) = Z.ltz ((x + y) mod s) x.
+  Proof.
+    intros; rewrite add_get_carry_full_div, Z.add_div_ltz_1; lia.
+  Qed.
+
+  Lemma add_get_carry_full_ltz_2 s x y :
+    0 <= x < s
+    -> 0 <= y < s
+    -> snd (Z.add_get_carry_full s x y) = Z.ltz ((x + y) mod s) y.
+  Proof.
+    intros; rewrite add_get_carry_full_div, Z.add_div_ltz_2; lia.
+  Qed.
+
+  Lemma sub_get_borrow_full_ltz s x y :
+    0 <= x < s
+    -> 0 <= y < s
+    -> snd (Z.sub_get_borrow_full s x y) = Z.ltz x ((x - y) mod s).
+  Proof.
+    intros; rewrite sub_get_borrow_full_div, Z.sub_div_ltz; lia.
+  Qed.
 End Z.

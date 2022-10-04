@@ -10,6 +10,7 @@ Require Import Crypto.Util.ZUtil.Tactics.DivModToQuotRem.
 Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
 Require Import Crypto.Util.ZUtil.Tactics.RewriteModSmall.
 Require Import Crypto.Util.ZUtil.Tactics.ZeroBounds.
+Require Import Crypto.Util.ZUtil.Tactics.LinearSubstitute.
 Require Import Crypto.Util.ZUtil.Hints.
 Require Import Crypto.Util.ZUtil.Hints.Core.
 Require Import Crypto.Util.ZUtil.ZSimplify.Core.
@@ -18,12 +19,16 @@ Require Import Crypto.Util.ZUtil.ZSimplify.Simple.
 Require Import Crypto.Util.ZUtil.Definitions.
 Require Import Crypto.Util.ZUtil.AddGetCarry.
 Require Import Crypto.Util.ZUtil.MulSplit.
+Require Import Crypto.Util.ZUtil.Ltz.
 Require Import Crypto.Util.ZUtil.TruncatingShiftl.
 Require Import Crypto.Util.ZUtil.Zselect.
 Require Import Crypto.Util.ZUtil.Div.
+Require Import Crypto.Util.ZUtil.Divide.
 Require Import Crypto.Util.ZUtil.Modulo.
+Require Import Crypto.Util.ZUtil.Opp.
 Require Import Crypto.Util.ZUtil.Pow.
 Require Import Crypto.Util.ZUtil.Land.
+Require Import Crypto.Util.ZUtil.Lor.
 Require Import Crypto.Util.ZUtil.LandLorShiftBounds.
 Require Import Crypto.Util.ZUtil.Shift.
 Require Import Crypto.Util.ZRange.
@@ -35,6 +40,7 @@ Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.Tactics.SplitInContext.
 Require Import Crypto.Util.Tactics.SpecializeAllWays.
 Require Import Crypto.Util.Tactics.SpecializeBy.
+Require Import Crypto.Util.Tactics.UniquePose.
 Require Import Crypto.Util.Tactics.RewriteHyp.
 Require Import Crypto.Util.Tactics.Head.
 Require Import Crypto.Util.Tactics.SetEvars.
@@ -124,6 +130,8 @@ Local Ltac interp_good_t_step_related :=
             => rewrite (surjective_pairing (Z.add_get_carry_full a b c)), Z.add_get_carry_full_div, Z.add_get_carry_full_mod
           | [ |- context[Z.add_with_get_carry_full ?a ?b ?c ?d] ]
             => rewrite (surjective_pairing (Z.add_with_get_carry_full a b c d)), Z.add_with_get_carry_full_div, Z.add_with_get_carry_full_mod
+          | [ |- context[Z.mul_high ?a ?b ?c] ]
+            => rewrite Z.mul_high_div
           | [ |- pair _ _ = pair _ _ ] => apply f_equal2
           | [ |- ?a mod ?b = ?a' mod ?b ] => apply f_equal2; lia
           | [ |- ?a / ?b = ?a' / ?b ] => apply f_equal2; lia
@@ -148,6 +156,57 @@ Proof using Type.
                     | Z.div_mod_to_quot_rem; nia
                     | interp_good_t_step_related ].
 Qed.
+
+Lemma unfold_value_barrier_rewrite_rules_proofs
+  : PrimitiveHList.hlist (@snd bool Prop) unfold_value_barrier_rewrite_rulesT.
+Proof using Type. now start_proof. Qed.
+
+Local Lemma unfold_is_bounded_by_bool v r
+  : is_bounded_by_bool v r = true -> lower r <= v <= upper r.
+Proof using Type.
+  cbv [is_bounded_by_bool]; intro; split_andb; Z.ltb_to_lt; split; assumption.
+Qed.
+
+Local Lemma unfold_is_tighter_than_bool r1 r2
+  : is_tighter_than_bool r1 r2 = true -> lower r2 <= lower r1 /\ upper r1 <= upper r2.
+Proof using Type.
+  cbv [is_tighter_than_bool]; intro; split_andb; Z.ltb_to_lt; split; assumption.
+Qed.
+
+Local Ltac saturate_add_sub_bounds_step :=
+  match goal with
+  | [ H : (ZRange.normalize ?r <=? r[0~>?s-1])%zrange = true |- context[?v mod ?s] ]
+    => unique assert (is_bounded_by_bool v (ZRange.normalize r) = true -> 0 <= v <= s - 1)
+      by (let H' := fresh in
+          intros H';
+          eapply ZRange.is_bounded_by_of_is_tighter_than in H; [ apply unfold_is_bounded_by_bool in H; exact H | exact H' ])
+  | [ H : is_bounded_by_bool (?x + ?y) (ZRange.normalize (ZRange.add ?rx ?ry)) = true -> ?T |- _ ]
+    => unique assert (is_bounded_by_bool x rx = true -> is_bounded_by_bool y ry = true -> T)
+      by (let Hx := fresh in
+          let Hy := fresh in
+          intros Hx Hy; apply H; clear -Hx Hy;
+          rewrite !ZRange.normalize_add in *; now apply ZRange.is_bounded_by_bool_add)
+  | [ H : is_bounded_by_bool (?x + ?y) (ZRange.add ?rx ?ry) = true -> ?T |- _ ]
+    => unique assert (is_bounded_by_bool x rx = true -> is_bounded_by_bool y ry = true -> T)
+      by (let Hx := fresh in
+          let Hy := fresh in
+          intros Hx Hy; apply H; clear -Hx Hy;
+          now apply ZRange.is_bounded_by_bool_add)
+  | [ H : is_bounded_by_bool (?x - ?y) (ZRange.normalize (ZRange.sub ?rx ?ry)) = true -> ?T |- _ ]
+    => unique assert (is_bounded_by_bool x rx = true -> is_bounded_by_bool y ry = true -> T)
+      by (let Hx := fresh in
+          let Hy := fresh in
+          intros Hx Hy; apply H; clear -Hx Hy;
+          rewrite !ZRange.normalize_sub in *; now apply ZRange.is_bounded_by_bool_sub)
+  | [ H : is_bounded_by_bool (?x - ?y) (ZRange.sub ?rx ?ry) = true -> ?T |- _ ]
+    => unique assert (is_bounded_by_bool x rx = true -> is_bounded_by_bool y ry = true -> T)
+      by (let Hx := fresh in
+          let Hy := fresh in
+          intros Hx Hy; apply H; clear -Hx Hy;
+          now apply ZRange.is_bounded_by_bool_sub)
+  | [ H : is_bounded_by_bool ?x ?r = true, H' : is_bounded_by_bool ?x ?r = true -> _ |- _ ]
+    => unique pose proof (H' H)
+  end.
 
 Local Ltac interp_good_t_step_arith :=
   first [ lazymatch goal with
@@ -189,6 +248,29 @@ Local Ltac interp_good_t_step_arith :=
             => apply ZRange.is_bounded_by_bool_normalize_constant_iff in H
           | [ H : is_bounded_by_bool ?x r[?y~>?y] = true |- _ ]
             => apply ZRange.is_bounded_by_bool_constant_iff in H
+          | [ Hx : is_bounded_by_bool ?x _ = true, Hy : is_bounded_by_bool ?y _ = true
+              |- Z.ltz ?x ?y = _ ]
+            => cbv [Z.ltz];
+               apply unfold_is_bounded_by_bool in Hx;
+               apply unfold_is_bounded_by_bool in Hy
+          | [ |- context[ident.cast r[0~>0] ?v] ]
+            => rewrite (ident.platform_specific_cast_0_is_mod 0 v) by reflexivity
+          | [ H : ?x = Z.ones _ |- context [Z.land _ ?x] ] => rewrite H
+          | [ H : ?x = Z.ones _ |- context [Z.land ?x _] ] => rewrite H
+          | [ |- context [Z.land (Z.ones ?n) ?x] ] =>
+            lazymatch x with
+            | Z.ones _ => fail
+            | _ => rewrite (Z.land_comm (Z.ones n) x)
+            end
+          | [ |- context [Z.land ?x (Z.ones (Z.succ (Z.log2 _)))] ] =>
+            rewrite (Z.land_ones_low x)
+              by (repeat match goal with
+                         | H : is_bounded_by_bool _ _ = true |- _ =>
+                           apply unfold_is_bounded_by_bool in H;
+                           cbn [upper lower] in H
+                         end;
+                  try apply Z.lt_succ_r;
+                  eauto using Z.log2_le_mono with lia)
           end
         | progress intros
         | progress subst
@@ -261,7 +343,7 @@ Local Ltac interp_good_t_step_arith :=
           | H : ?x mod ?b * ?y <= _
             |- context [ (?x * ?y) mod ?b ] =>
             rewrite (PullPush.Z.mul_mod_l x y b);
-            rewrite (Z.mod_small (x mod b * y) b) by omega
+            rewrite (Z.mod_small (x mod b * y) b) by lia
           | [ |- context[_ - ?x + ?x] ] => rewrite !Z.sub_add
           | [ |- context[_ mod (2^_) * 2^_] ] => rewrite <- !Z.mul_mod_distr_r_full
           | [ |- context[Z.land _ (Z.ones _)] ] => rewrite !Z.land_ones by lia
@@ -306,7 +388,8 @@ Local Ltac interp_good_t_step_arith :=
           | [ |- - ident.cast (-?r) (- (?x / ?y)) = ident.cast ?r (?x' / ?y) ]
             => tryif constr_eq x x' then fail else replace x with x' by lia
           | [ |- _ = _ :> BinInt.Z ] => progress autorewrite with zsimplify_fast
-          end ].
+          end
+        | saturate_add_sub_bounds_step ].
 
 Local Ltac remove_casts :=
   repeat match goal with
@@ -376,18 +459,6 @@ Local Ltac remove_casts :=
          | _ => progress subst
          end.
 
-Local Lemma unfold_is_bounded_by_bool v r
-  : is_bounded_by_bool v r = true -> lower r <= v <= upper r.
-Proof using Type.
-  cbv [is_bounded_by_bool]; intro; split_andb; Z.ltb_to_lt; split; assumption.
-Qed.
-
-Local Lemma unfold_is_tighter_than_bool r1 r2
-  : is_tighter_than_bool r1 r2 = true -> lower r2 <= lower r1 /\ upper r1 <= upper r2.
-Proof using Type.
-  cbv [is_tighter_than_bool]; intro; split_andb; Z.ltb_to_lt; split; assumption.
-Qed.
-
 Local Ltac unfold_cast_lemmas :=
   repeat match goal with
          | [ H : context[ZRange.normalize (ZRange.constant _)] |- _ ]
@@ -439,8 +510,44 @@ Local Ltac fin_with_nia :=
   | _ => reflexivity || (Z.div_mod_to_quot_rem; (lia + nia))
   end.
 
-Lemma arith_with_casts_rewrite_rules_proofs
-  : PrimitiveHList.hlist (@snd bool Prop) arith_with_casts_rewrite_rulesT.
+Local Ltac do_clear_nia x y r H H' :=
+  let rec find_H x :=
+      lazymatch goal with
+      | [ H : _ <= x < _ |- _ ] => H
+      | [ H : _ <= x <= _ |- _ ] => H
+      | _ => lazymatch x with
+             | ?x0 + ?x1
+               => let H0 := find_H x0 in
+                  let H1 := find_H x1 in
+                  let m0 := lazymatch type of H0 with 0 <= _ <= ?m => m end in
+                  let m1 := lazymatch type of H1 with 0 <= _ <= ?m => m end in
+                  let H := fresh in
+                  let __ := lazymatch goal with
+                            | _ => assert (H : 0 <= x <= m0 + m1) by (clear -H0 H1; lia)
+                            end in
+                  H
+             | ?x0 - ?x1
+               => let H0 := find_H x0 in
+                  let H1 := find_H x1 in
+                  let m0 := lazymatch type of H0 with 0 <= _ <= ?m => m end in
+                  let m1 := lazymatch type of H1 with 0 <= _ <= ?m => m end in
+                  let H := fresh in
+                  let __ := lazymatch goal with
+                            | _ => assert (H : -m1 <= x <= m0) by (clear -H0 H1; lia)
+                            end in
+                  H
+             end
+      end in
+  idtac;
+  let Hx := find_H x in
+  let Hy := find_H y in
+  lazymatch goal with
+  | [ Hm : 0 < 2^_ <= 2^_, Hr : 0 <= r < _ |- _ ]
+    => clear -Hx Hy Hm Hr H' H; nia
+  end.
+
+Lemma arith_with_casts_rewrite_rules_proofs (adc_no_carry_to_add : bool)
+  : PrimitiveHList.hlist (@snd bool Prop) (arith_with_casts_rewrite_rulesT adc_no_carry_to_add).
 Proof using Type.
   start_proof; auto; intros; try lia.
   all: repeat interp_good_t_step_related.
@@ -452,6 +559,54 @@ Lemma strip_literal_casts_rewrite_rules_proofs
   : PrimitiveHList.hlist (@snd bool Prop) strip_literal_casts_rewrite_rulesT.
 Proof using Type.
   start_proof; auto; intros; remove_casts; reflexivity.
+Qed.
+
+Lemma add_assoc_left_rewrite_rules_proofs
+  : PrimitiveHList.hlist (@snd bool Prop) add_assoc_left_rewrite_rulesT.
+Proof using Type. start_proof; intros; lia. Qed.
+
+Lemma flatten_thunked_rects_rewrite_rules_proofs
+  : PrimitiveHList.hlist (@snd bool Prop) flatten_thunked_rects_rewrite_rulesT.
+Proof using Type. start_proof; intros; reflexivity. Qed.
+
+Local Ltac saturate_goodb_step :=
+  first [ match goal with
+          | [ H : (ZRange.normalize ?r <=? _)%zrange = true |- _ ]
+            => unique pose proof (ZRange.goodb_of_is_tighter_than_bool_normalize _ _ H)
+          end ].
+
+Local Ltac unnormalize_step :=
+  first [ match goal with
+          | [ H : ZRange.goodb ?r = true |- _ ]
+            => rewrite (proj1 ZRange.normalize_id_iff_goodb H) in *
+          end
+        | progress rewrite ?ZRange.normalize_flip, ?ZRange.normalize_idempotent, ?ZRange.normalize_union_normalize, ?ZRange.normalize_id_iff_goodb, ?ZRange.normalize_id_pow2, ?ZRange.normalize_is_tighter_than_bool_of_goodb, ?ZRange.normalize_opp, ?ZRange.normalize_constant, ?ZRange.normalize_two_corners, ?ZRange.normalize_four_corners, ?ZRange.normalize_eight_corners, ?ZRange.normalize_two_corners_and_zero, ?ZRange.normalize_four_corners_and_zero, ?ZRange.normalize_eight_corners_and_zero, ?ZRange.normalize_log2, ?ZRange.normalize_log2_up, ?ZRange.normalize_add, ?ZRange.normalize_sub, ?ZRange.normalize_mul, ?ZRange.normalize_div, ?ZRange.normalize_shiftr, ?ZRange.normalize_shiftl, ?ZRange.normalize_land, ?ZRange.normalize_lor, ?ZRange.normalize_cc_m in * ].
+
+
+  Local Ltac is_bounded_by_bool_step :=
+    first [ match goal with
+            | [ |- is_bounded_by_bool (_ / _) (_ / _) = true ] => apply ZRange.is_bounded_by_bool_div
+            | [ |- is_bounded_by_bool (_ * _) (_ * _) = true ] => apply ZRange.is_bounded_by_bool_mul
+            | [ |- is_bounded_by_bool (_ + _) (_ + _) = true ] => apply ZRange.is_bounded_by_bool_add
+            | [ |- is_bounded_by_bool (_ - _) (_ - _) = true ] => apply ZRange.is_bounded_by_bool_sub
+            | [ |- is_bounded_by_bool (- _) (- _) = true ] => rewrite ZRange.is_bounded_by_bool_opp
+            | [ |- is_bounded_by_bool (ident.cast ?r _) (ZRange.normalize ?r) = true ] => apply ident.cast_always_bounded
+            end ].
+
+Lemma relax_bitwidth_adc_sbb_rewrite_rules_proofs which_bitwidths
+  : PrimitiveHList.hlist (@snd bool Prop) (relax_bitwidth_adc_sbb_rewrite_rulesT which_bitwidths).
+Proof using Type.
+  start_proof; intros; repeat interp_good_t_step_related; repeat saturate_goodb_step; repeat unnormalize_step.
+  all: match goal with
+       | [ H0 : (_ <=? ?sm)%zrange = true, H1 : (?sm <=? ?lg)%zrange = true
+           |- ident.cast ?sm ?v = ident.cast ?lg ?v ]
+         => rewrite (ident.cast_in_bounds sm v), (ident.cast_in_bounds lg v);
+              [ reflexivity
+              | eapply ZRange.is_bounded_by_of_is_tighter_than; [ eassumption | ];
+                eapply ZRange.is_bounded_by_of_is_tighter_than; [ eassumption | ]
+              | eapply ZRange.is_bounded_by_of_is_tighter_than; [ eassumption | ] ]
+       end.
+  all: repeat is_bounded_by_bool_step.
 Qed.
 
 Section fancy.
@@ -586,6 +741,9 @@ Proof using Type.
            | |- ((_ + _) * ?y) mod _ = _ =>
              (* double * single multiplication case *)
              rewrite Z.mul_add_distr_r, <- Z.mul_assoc, (Z.mul_comm (2^_) y), Z.mul_assoc
+           | |- (?x * (_ + _)) mod _ = _ =>
+             (* single * double multiplication case *)
+             rewrite Z.mul_add_distr_l, Z.mul_assoc
            | |- (_ + _) mod (_ * _) = _ =>
              (* addition cases *)
              rewrite !Z.rem_mul_r by lia;
@@ -597,6 +755,12 @@ Proof using Type.
            | |- ((_ + _) &' _) mod _ = _ =>
              (* addition-and case *)
              rewrite Z.land_add_high by (try apply Z.log2_lt_pow2; lia); lia
+           | |- (_ + _) >> _ mod _ = _ =>
+             (* take only high bits *)
+             rewrite ?Z.shiftr_div_pow2 by lia; autorewrite with zsimplify; lia
+           | |- (_ + _) / _ = _ =>
+             (* take only high bits *)
+             autorewrite with zsimplify; lia
            end.
 
   (* should have only Z.lor cases now *)
@@ -619,4 +783,117 @@ Proof using Type.
   all:rewrite ?(Z.mul_comm (2 ^ _)), <-?Z.shiftl_mul_pow2, <-?Z.shiftr_div_pow2 by auto with zarith.
   all:rewrite Z.shiftr_add_shiftl_high by use_shiftr_range.
   all:autorewrite with zsimplify; lia.
+Qed.
+
+Lemma multiret_split_rewrite_rules_proofs (bitwidth : Z) (lgcarrymax : Z)
+  : PrimitiveHList.hlist (@snd bool Prop) (multiret_split_rewrite_rulesT bitwidth lgcarrymax).
+Proof using Type.
+  assert (0 <= lgcarrymax <= bitwidth -> 0 < 2^lgcarrymax <= 2^bitwidth) by auto with zarith.
+  assert (0 <= bitwidth -> bitwidth < 2^bitwidth)
+    by (intros; apply Z.pow_gt_lin_r; auto with zarith).
+
+  start_proof; auto; intros; try lia.
+  all: repeat interp_good_t_step_related.
+  all: systematically_handle_casts; autorewrite with zsimplify_fast; try reflexivity.
+  all: rewrite !ident.platform_specific_cast_0_is_mod, ?Z.sub_add, ?Z.mod_mod by lia; try reflexivity.
+  all: progress specialize_by lia.
+  all: try match goal with
+           | H : ?x = 2 ^ Z.log2 ?x |- _ =>
+             rewrite H
+           end.
+  all:
+    try match goal with
+        | |- context [(2^?n - 1) mod 2^?bw] =>
+          assert (0 < 2^n < 2^bw) by auto with zarith;
+            Z.rewrite_mod_small
+        end.
+  all: rewrite ?Z.land_pow2 by auto with zarith.
+  all: push_Zmod; pull_Zmod; try reflexivity.
+  all: Z.rewrite_mod_small.
+  all: rewrite ?Z.shiftr_div_pow2, ?Z.shiftl_mul_pow2 by lia.
+  all: rewrite ?Z.log2_pow2 by lia.
+  all: Z.rewrite_mod_small.
+  all: rewrite ?Z.shiftr_div_pow2, ?Z.shiftl_mul_pow2 by lia.
+  all: rewrite ?Z.mod_pow_same_base_larger,
+       ?Z.mod_pow_same_base_smaller by lia.
+  all: rewrite ?Z.ltz_mod_pow2_small by lia.
+  all: rewrite <-?Z.add_div_ltz_1 by lia.
+  all: try reflexivity.
+  all: push_Zmod; pull_Zmod; try reflexivity.
+  all: rewrite ?Z.mod_pull_div, <-?Z.pow_add_r by auto with zarith.
+  all: rewrite <-?Z.sub_sub_div_ltz by lia.
+  all: rewrite <-?Z.sub_div_ltz by lia.
+  all: try rewrite Z.mul_opp_l, Z.sub_opp_l, Opp.Z.opp_sub.
+  all:
+    repeat match goal with
+           | Hx : 0 <= ?x <= 2^?n - 1,
+                  Hy : 0 <= ?y <= 2^?n - 1 |- context [?x + ?y] =>
+             unique assert (0 <= x + y < 2^(n+1))
+               by (rewrite Z.pow_add_r, Z.pow_1_r; auto with zarith)
+           | Hx : 0 <= ?x <= 2^?n - 1,
+                  Hy : 0 <= ?y <= 2^?n - 1 |- context [?c + ?x + ?y] =>
+             unique assert (0 <= c + x + y < 2^(n+2))
+               by (rewrite Z.pow_add_r, Z.pow_2_r; auto with zarith)
+           | H : 0 < ?n |- _ =>
+             unique assert (2^(bitwidth+1) <= 2^(bitwidth+n))
+               by auto with zarith
+           | H : 0 <= ?x < 2 ^ ?z |- context [?x mod 2 ^ ?y] =>
+             unique assert (2 ^ z <= 2 ^ y) by auto with zarith;
+               unique assert (0 <= x <= 2 ^ y) by auto with zarith
+           | _ => rewrite Z.ltz_mod_pow2_small by lia
+           | _ => rewrite Z.add_div_pow2 by auto with zarith
+           | _ => rewrite <-Z.add_add_div_ltz_2 by lia
+           | _ => rewrite Z.mod_pull_div, <-?Z.pow_add_r
+               by auto with zarith
+           | _ => progress Z.rewrite_mod_small
+           end.
+  all: try solve[
+  try lazymatch goal with
+       | [ |- ?x mod ?y = _ mod ?y ]
+         => apply f_equal2; [ | reflexivity ];
+              cbv [Z.ltz]; break_innermost_match; Z.ltb_to_lt
+       end; Z.div_mod_to_quot_rem;
+   repeat match goal with
+              | [ H : ?x + ?y = ?d * ?q + ?r, H' : ?r < ?y |- _ ]
+                => is_var q; unique assert (q = 1) by do_clear_nia x y r H H'; subst
+              | [ H : ?x + ?y = ?d * ?q + ?r, H' : ?r >= ?y |- _ ]
+                => is_var q; unique assert (q = 0) by do_clear_nia x y r H H'; subst
+              | [ H : ?x - ?y = ?d * ?q + ?r, H' : ?x < ?r |- _ ]
+                => is_var q; unique assert (q = -1) by do_clear_nia x y r H H'; subst
+              | [ H : ?x - ?y = ?d * ?q + ?r, H' : ?x >= ?r |- _ ]
+                => is_var q; unique assert (q = 0) by do_clear_nia x y r H H'; subst
+              | [ H0 : ?x = ?d * ?q0 + ?r0, H : ?x - ?y = ?d * ?q + ?r, H' : ?r0 < ?r |- _ ]
+                => (* ugh, this is kind-of complicated; we could just let [nia] handle it, but it runs out of memory on 8.9 *)
+                let x' := fresh "x" in
+                (remember x as x' eqn:?);
+                  symmetry in H0; destruct H0;
+                    assert (r0 - y = d * (q - q0) + r) by (clear -H; nia); clear H;
+                      let q' := fresh "q" in
+                      remember (q - q0) as q' eqn:?; (tryif is_var q then Z.linear_substitute q else idtac)
+              | _ => nia
+          end].
+Qed.
+
+Lemma noselect_rewrite_rules_proofs (bitwidth : Z)
+  : PrimitiveHList.hlist (@snd bool Prop) (noselect_rewrite_rulesT bitwidth).
+Proof.
+  assert (0 <= bitwidth -> 0 < 2^bitwidth) by auto with zarith.
+  start_proof; auto; intros; try lia.
+  all: repeat interp_good_t_step_related.
+  all: systematically_handle_casts; try reflexivity.
+  all: specialize_by auto.
+  all: rewrite !ident.platform_specific_cast_0_is_mod by lia.
+  all: rewrite ?Z.sub_simpl_r by auto.
+  all: autorewrite with zsimplify_fast.
+  Time
+  all: repeat match goal with
+              | _ => progress rewrite ?Z.lxor_0_l, ?Z.lxor_0_r
+              | _ => progress rewrite ?Z.lor_0_l, ?Z.lor_0_r
+              | _ => progress rewrite ?Z.land_0_l, ?Z.land_0_r
+              | _ => rewrite Z.lxor_nilpotent
+              | _ => rewrite Z.land_pow2 by auto with zarith
+              | _ => progress Z.rewrite_mod_small
+              | _ => progress (push_Zmod; pull_Zmod)
+              | _ => reflexivity
+              end.
 Qed.

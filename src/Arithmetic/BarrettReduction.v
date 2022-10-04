@@ -118,8 +118,7 @@ Module Fancy.
     Local Notation w := (uweight width). Local Notation eval := (Positional.eval w).
     Context (mut Mt : list Z) (mut_correct : mut = Partition.partition w (sz+1) mu) (Mt_correct : Mt = Partition.partition w sz M).
     Context (mu_eq : mu = 2 ^ (2 * k) / M) (muHigh_one : mu / w sz = 1) (M_range : 2^(k-1) < M < 2^k).
-
-    Local Lemma wprops : @weight_properties w. Proof. apply uwprops; auto with lia. Qed.
+    Local Lemma wprops : @weight_properties w. Proof using width_ok. clear - width_ok. apply uwprops ; lia. Qed.
     Local Hint Resolve wprops : core.
     Hint Rewrite mut_correct Mt_correct : pull_partition.
 
@@ -202,17 +201,21 @@ Module Fancy.
         forall t tn,
           (m <= tn)%nat -> 0 <= t < w tn -> 0 <= n < width ->
           shiftr' m (Partition.partition w tn t) n = Partition.partition w m (t / 2 ^ n).
-      Proof.
+      Proof using width_ok.
+        clear -width_ok.
         cbv [shiftr']. induction m; intros; [ reflexivity | ].
         rewrite !partition_step, seq_snoc.
         autorewrite with distr_length natsimplify push_map push_nth_default.
-        rewrite IHm, Z.rshi_correct, uweight_S by auto with zarith.
-        rewrite <-Z.mod_pull_div by auto with zarith.
-        destruct (Nat.eq_dec (S m) tn); [subst tn | ]; rewrite !nth_default_partition by omega.
-        { rewrite nth_default_out_of_bounds by distr_length.
-          autorewrite with zsimplify. Z.rewrite_mod_small.
+        rewrite IHm, Z.rshi_correct, !uweight_S by auto with zarith.
+        rewrite <-!Z.mod_pull_div by auto with zarith.
+        destruct (Nat.eq_dec (S m) tn); [subst tn | ].
+        { rewrite uweight_S in * by auto with zarith.
+          break_innermost_match; try lia.
+          autorewrite with zsimplify_fast. Z.rewrite_mod_small.
           rewrite Z.div_div_comm by auto with zarith; reflexivity. }
-        { repeat match goal with
+        { break_innermost_match; try lia.
+          rewrite <-!uweight_S by auto with zarith.
+          repeat match goal with
                  | _ => rewrite uweight_pull_mod by auto with zarith
                  | _ => rewrite Z.mod_mod_small by auto with zarith
                  | _ => rewrite <-Znumtheory.Zmod_div_mod by (Z.zero_bounds; auto with zarith)
@@ -236,7 +239,7 @@ Module Fancy.
       Proof.
         cbv [shiftr]; intros.
         break_innermost_match; [ | solve [auto using shiftr'_correct with zarith] ].
-        pose proof (Z.mod_pos_bound n width ltac:(omega)).
+        pose proof (Z.mod_pos_bound n width ltac:(lia)).
         assert (t / 2 ^ (n - n mod width) < w (tn - Z.to_nat (n / width))).
         { apply Z.div_lt_upper_bound; [solve [Z.zero_bounds] | ].
           rewrite uweight_eq_alt' in *.
@@ -311,14 +314,14 @@ Module Fancy.
       Proof.
         intros. subst a b. autorewrite with push_Zmul.
         ring_simplify_subterms. rewrite Z.pow_2_r.
-        rewrite Z.div_add_exact by (push_Zmod; autorewrite with zsimplify; omega).
+        rewrite Z.div_add_exact by (push_Zmod; autorewrite with zsimplify; lia).
         repeat match goal with
                | |- context [d * ?a * ?b * ?c] =>
                  replace (d * a * b * c) with (a * b * c * d) by ring
                | |- context [d * ?a * ?b] =>
                  replace (d * a * b) with (a * b * d) by ring
                end.
-        rewrite !Z.div_add by omega.
+        rewrite !Z.div_add by lia.
         autorewrite with zsimplify.
         rewrite (Z.mul_comm a0 b0).
         ring_simplify. ring.
@@ -403,7 +406,7 @@ Module Fancy.
              break_innermost_match; autorewrite with zsimplify; reflexivity).
         rewrite shiftr_correct by (rewrite ?Z.div_small, ?Z2Nat.inj_0 by lia; auto with zarith lia).
         autorewrite with weight_to_pow pull_Zpow pull_Zdiv.
-        rewrite !Z.div_div, <-!Z.pow_add_r by (Core.zutil_arith || Z.zero_bounds).
+        rewrite ?Z.div_div, <-?Z.pow_add_r by (Core.zutil_arith || Z.zero_bounds).
         congruence.
       Qed.
 

@@ -7,19 +7,26 @@ Require Import Coq.Lists.List.
 Require Import Crypto.Util.ZRange.
 Require Import Crypto.Arithmetic.Core.
 Require Import Crypto.Arithmetic.ModOps.
+Require Import Crypto.Arithmetic.Partition.
 Require Import Crypto.PushButtonSynthesis.UnsaturatedSolinas.
+Require Import Crypto.UnsaturatedSolinasHeuristics.
+Require Crypto.PushButtonSynthesis.SaturatedSolinas.
 Require Crypto.PushButtonSynthesis.WordByWordMontgomery.
-Require Import Crypto.Stringification.C.
+Require Crypto.Stringification.C.
+Require Crypto.Stringification.Go.
+Require Crypto.Stringification.Java.
 Require Import Crypto.BoundsPipeline.
 Require Import Crypto.Util.ZUtil.ModInv.
 
 Require Import Crypto.Util.Notations.
+Local Open Scope string_scope.
+Local Open Scope list_scope.
 Import ListNotations. Local Open Scope Z_scope.
 
 Import
+  AbstractInterpretation.Compilers
   Language.Compilers
-  Language.API.Compilers
-  Stringification.C.Compilers.
+  Language.API.Compilers.
 
 Import Language.API.Compilers.API.
 
@@ -29,11 +36,2992 @@ Local Coercion Z.of_nat : nat >-> Z.
 Local Coercion QArith_base.inject_Z : Z >-> Q.
 Local Coercion Z.pos : positive >-> Z.
 
+Local Existing Instance default_low_level_rewriter_method.
+Local Existing Instance AbstractInterpretation.default_Options.
+Local Instance : unfold_value_barrier_opt := true.
+Local Instance : assembly_hints_lines_opt := [].
+Local Instance : ignore_unique_asm_names_opt := false.
+Local Instance : tight_upperbound_fraction_opt := default_tight_upperbound_fraction.
+Local Existing Instance default_language_naming_conventions.
+Local Existing Instance default_documentation_options.
+Local Instance : package_name_opt := None.
+Local Instance : class_name_opt := None.
+
+Module debugging_go_bits_add.
+  Import Stringification.Go.
+  Section __.
+    Local Existing Instance Go.OutputGoAPI.
+    Local Instance : relax_adc_sbb_return_carry_to_bitwidth_opt := [32; 64].
+    Local Instance : skip_typedefs_opt := true.
+    Local Instance : language_specific_cast_adjustment_opt := true.
+    Local Existing Instance Build_output_options_opt.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := false.
+    Local Instance : inline_opt := false.
+    Local Instance : inline_internal_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := true. (* only for x64 *)
+    Local Instance : should_split_multiret_opt := false.
+
+    Context (s := 2^127)
+            (c :=  [(1,1)])
+            (machine_wordsize := 64).
+
+    Goal True.
+      pose (WordByWordMontgomery.smul (s - Associational.eval c) machine_wordsize "p256_") as v.
+      vm_compute Z.sub in v.
+      cbv [WordByWordMontgomery.smul] in v.
+      set (k := WordByWordMontgomery.mul _ _) in (value of v).
+      vm_compute in v.
+      clear v; cbv [WordByWordMontgomery.mul] in k.
+      cbv beta delta [Pipeline.BoundsPipeline] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (v := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in v.
+      repeat match goal with
+             | [ H := @inl ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inl A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             | [ H := @inr ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inr A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             end.
+      set (v' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in v'.
+      clear -k.
+      repeat match goal with
+             | [ H := @inl ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inl A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             | [ H := @inr ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inr A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             end.
+      vm_compute WordByWordMontgomery.no_select_size in k.
+      vm_compute WordByWordMontgomery.split_mul_to in k.
+      vm_compute WordByWordMontgomery.split_multiret_to in k.
+      vm_compute WordByWordMontgomery.split_multiret_to in k.
+      cbv beta iota in k.
+      set (v := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in v.
+      clear -k.
+      repeat match goal with
+             | [ H := @inl ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inl A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             | [ H := @inr ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inr A B H') in (value of H); subst H; rename H' into H; cbv beta iota in *
+             end.
+      vm_compute relax_adc_sbb_return_carry_to_bitwidth_ in k.
+      cbv beta iota in k.
+      set (v' := Pipeline.RewriteAndEliminateDeadAndInline _ _ _ _ _) in (value of k).
+      vm_compute in v'; clear -k.
+      set (v := RelaxBitwidthAdcSbb.Compilers.RewriteRules.RewriteRelaxBitwidthAdcSbb _ _ _) in (value of k).
+      Notation uint64 := r[0~>18446744073709551615]%zrange.
+      Import IdentifiersBasicGENERATED.Compilers.
+      Import API.Compilers.
+      Import APINotations.Compilers.
+      (*
+      Compute 2^64-1.
+      Compute Z.log2(18446744073709551615+1).
+      clear -v.
+      vm_compute in v.
+      subst v; cbv beta iota zeta in k.
+      vm_compute in k.
+
+      Import Rewriter.Util.LetIn.
+      let do_set a v f :=
+          lazymatch v with
+          | context[let n := _ in _] => fail
+          | context[dlet n := _ in _] => fail
+          | _ => idtac
+          end;
+          first [ pose v as a; change (f a) in (value of k)
+                | let a := fresh "E" in pose v as a; change (f a) in (value of k) ]
+      in
+      repeat
+        (repeat (lazymatch (eval cbv delta [k] in k) with
+                 | context T[(let a := ?v in @?f a) ?x]
+                   => let G' := context T[let a := v in f a x] in change G' in (value of k)
+                 end; cbv beta in k);
+         match (eval cbv delta [k] in k) with
+         | context T[let a := ?v in @?f a]  => do_set a v f
+         | context T[dlet a := ?v in @?f a] => do_set a v f
+         end; cbv beta in k).
+      clear -k.
+      match (eval cbv delta [E] in E) with
+      | context T[@expr.APP ?a ?b ?c ?d ?e ?f]
+        => pose (@expr.APP a b c d e f) as v;
+             let T' := context T[v] in
+             change T' in (value of E)
+      end.
+      Time vm_compute in v.
+      cbv beta delta [Pipeline.PreBoundsPipeline] in E.
+      repeat (lazymatch (eval cbv delta [E] in E) with
+              | context T[(let a := ?v in @?f a) ?x]
+                => let G' := context T[let a := v in f a x] in change G' in (value of E)
+              end; cbv beta in E).
+      let do_set a v f :=
+          lazymatch v with
+          | context[let n := _ in _] => fail
+          | context[dlet n := _ in _] => fail
+          | _ => idtac
+          end;
+          first [ pose v as a; change (f a) in (value of E)
+                | let a := fresh "E" in pose v as a; change (f a) in (value of E) ]
+      in
+      repeat
+        (repeat (lazymatch (eval cbv delta [E] in E) with
+                 | context T[(let a := ?v in @?f a) ?x]
+                   => let G' := context T[let a := v in f a x] in change G' in (value of E)
+                 end; cbv beta in E);
+         match (eval cbv delta [E] in E) with
+         | context T[let a := ?v in @?f a]  => do_set a v f
+         | context T[dlet a := ?v in @?f a] => do_set a v f
+         end; cbv beta iota in * ).
+      vm_compute WordByWordMontgomery.possible_values_of_machine_wordsize in relax_zrange.
+      cbv [only_signed_opt_instance_0] in relax_zrange.
+      cbv [Pipeline.opts_of_method] in E1; subst E0.
+      cbv [default_low_level_rewriter_method] in E1.
+      vm_compute in E1.
+      Notation "'hide'" := (expr.Abs _) : expr_scope.
+      Time vm_compute in E2.
+      Time vm_compute in E3.
+      clear -k.
+      subst E7.
+      Time time vm_compute in E4; time vm_compute in E5; time vm_compute in E6; time vm_compute in e; time vm_compute in E8; subst E8; time vm_compute in E'; clear -k.
+      repeat match goal with
+             | [ H := @inl ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inl A B H') in (value of H); subst H; rename H' into H
+             | [ H := @inr ?A ?B ?v |- _ ] => let H' := fresh "E" in pose v as H'; change (@inr A B H') in (value of H); subst H; rename H' into H
+             end.
+      cbv beta iota in *.
+      let do_set a v f :=
+          lazymatch v with
+          | context[let n := _ in _] => idtac v; fail
+          | context[dlet n := _ in _] => idtac v; fail
+          | _ => idtac
+          end;
+          first [ pose v as a; change (f a) in (value of k)
+                | let a := fresh "k" in pose v as a; change (f a) in (value of k) ]
+      in
+      repeat
+        (repeat (lazymatch (eval cbv delta [k] in k) with
+                 | context T[(let a := ?v in @?f a) ?x]
+                   => let G' := context T[let a := v in f a x] in change G' in (value of k)
+                 end; cbv beta in k);
+         match (eval cbv delta [k] in k) with
+         | context T[let a := ?v in @?f a]  => do_set a v f
+         | context T[dlet a := ?v in @?f a] => do_set a v f
+         end; cbv beta iota in * ).
+      HERE
+      Set Printing Implicit.
+             end.
+      let do_set a v f :=
+          lazymatch v with
+          | context[let n := _ in _] => fail
+          | context[dlet n := _ in _] => fail
+          | _ => idtac
+          end;
+          first [ pose v as a; change (f a) in (value of k)
+                | let a := fresh "E" in pose v as a; change (f a) in (value of k) ]
+      in
+      lazymatch (eval cbv delta [E] in E) with
+      | context T[let a := ?v in @?f a]  => idtac a v f; do_set a v f
+      | context T[dlet a := ?v in @?f a] => do_set a v f
+      end.
+      let do_set a v f :=
+          lazymatch v with
+          | context[let n := _ in _] => fail
+          | context[dlet n := _ in _] => fail
+          | _ => idtac
+          end;
+          first [ set (a := v) in (value of k); change (f a) in (value of k)
+                | let a := fresh "E" in set (a := v) in (value of k); change (f a) in (value of k) ]
+      in
+      do 1
+        (repeat (lazymatch (eval cbv delta [E] in E) with
+                 | context T[(let a := ?v in @?f a) ?x]
+                   => let G' := context T[let a := v in f a x] in change G' in (value of E)
+                 end; cbv beta in E);
+         match (eval cbv delta [E] in E) with
+         | context T[let a := ?v in @?f a]  => do_set a v f
+         | context T[dlet a := ?v in @?f a] => do_set a v f
+         end; cbv beta in E).
+      lazymatch (eval cbv delta [E] in E) with
+                 | context T[(let a := ?v in @?f a) ?x]
+                   => let G' := context T[let a := v in f a x] in change G' in (value of E)
+                 end; cbv beta in E.
+      Time vm_compute in E.
+      set (k' := expr.APP _ _) in (value of E) at 1.
+      Time vm_compute in E.
+      vm_compute in E'.
+      vm_compute in k.
+      vm_compute in v.
+      subst k.
+      cbv beta iota in v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in v.
+      cbv [Go.OutputGoAPI Crypto.Util.Option.sequence_return] in v.
+      cbv [Go.ToFunctionLines] in v.
+      set (k := IR.OfPHOAS.ExprOfPHOAS _ _ _ _) in (value of v).
+      clear v.
+      cbv [IR.OfPHOAS.ExprOfPHOAS IR.OfPHOAS.ExprOfPHOAS_cps IR.OfPHOAS.ExprOfPHOAS_with_opt_outbounds_cps IR.OfPHOAS.ExprOfPHOAS_cont] in k; rename k into v.
+      cbv [IR.OfPHOAS.expr_of_PHOAS IR.OfPHOAS.expr_of_PHOAS_cps IR.OfPHOAS.expr_of_PHOAS_cont] in v.
+      set (k := partial.Extract _ _ _) in (value of v).
+      cbv [partial.Extract] in k.
+      clear v; rename k into v.
+      cbv [partial.ident.extract] in v.
+      cbv [partial.extract_gen] in v.
+      cbv [type.app_curried] in v.
+      cbv delta [partial.extract'] in v.
+      cbv delta [partial.extract_gen] in v.
+      cbv beta in v.
+      cbv [type.app_curried] in v.
+      cbv delta [partial.extract'] in v.
+      cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      do 50 (cbv iota in v; cbv beta in v).
+      Import Rewriter.Util.LetIn.
+      repeat match (eval cbv [v] in v) with
+             | Let_In ?x ?f
+               => let x := (eval vm_compute in x) in
+                  clear v; pose (f x) as v
+             end.
+      (*
+      cbv beta in v.
+      cbv [partial.abstract_interp_ident] in v.
+      set (k := ZRange.ident.option.interp true Compilers.ident_cons) in (value of v).
+      cbn in k; subst k; cbv beta in v.
+      set (k := ZRange.ident.option.interp true Compilers.ident_nil) in (value of v).
+      cbn in k; subst k; cbv beta in v.
+      cbn [option_map] in v.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 2; vm_compute in l.
+      subst l.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 3; vm_compute in l.
+      subst l.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 4; vm_compute in l.
+      subst l.
+       *)
+      (*
+      cbv [ZRange.ident.option.interp] in v.
+      cbv [
+      cbv beta zeta delta [Rewriter.Util.LetIn.Let_In].
+      cbv [partial.extract'] in v.
+      vm_compute in k.
+      vm_compute in k.
+      vm_compute in k; subst k.
+      cbv beta iota zeta in v.
+      set (v' := Go.to_function_lines _ _ _ _) in (value of v).
+
+      clear v; rename v' into v.
+      cbv [WordByWordMontgomery.add] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      set (k' := GeneralizeVar.ToFlat _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+       *) *)
+    Abort.
+  End __.
+End debugging_go_bits_add.
+
+Local Existing Instance default_output_options.
+
+Module debugging_typedefs.
+  Import Crypto.PushButtonSynthesis.UnsaturatedSolinas.
+  Import Stringification.C.
+  Import Stringification.C.Compilers.
+  Import Stringification.C.Compilers.ToString.
+  Section __.
+    Local Existing Instance C.OutputCAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := false.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : widen_carry_opt := false.
+    Local Instance : widen_bytes_opt := false.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := false.
+    Local Instance : should_split_multiret_opt :=false.
+
+    Definition n := 3%nat (*5%nat*).
+    Definition s := 2^127 (* 255*).
+    Definition c := [(1, 1(*9*))].
+    Definition machine_wordsize := 64.
+
+    Import IR.Compilers.ToString.
+    Redirect "log"
+             Compute match (sadd n s c machine_wordsize "1271") return (string * Pipeline.ErrorT _) with
+                     | (name, ErrorT.Success {| Pipeline.lines := v |}) => (name, ErrorT.Success (String.concat String.NewLine v))
+                     | v => _
+                     end.
+    Redirect "log"
+             Compute Synthesize n s c machine_wordsize [] "curve" ["add"].
+
+    Goal True.
+      pose (sadd n s c machine_wordsize "1271") as v.
+      cbv [sadd] in v.
+      vm_compute add in v.
+      cbv beta iota zeta in v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in v.
+      cbv [C.OutputCAPI] in v.
+      cbv [ToFunctionLines] in v.
+      vm_compute IR.OfPHOAS.ExprOfPHOAS in v.
+      cbv beta iota zeta in v.
+      (*vm_compute in v.*)
+      set (k := ToString.OfPHOAS.input_bounds_to_string _ _) in (value of v).
+      clear v.
+      vm_compute in k.
+    Abort.
+  End __.
+End debugging_typedefs.
+
+Module debugging_21271_from_bytes.
+  Import Crypto.PushButtonSynthesis.UnsaturatedSolinas.
+  Import Stringification.C.
+  Import Stringification.C.Compilers.
+  Import Stringification.C.Compilers.ToString.
+  Section __.
+    Local Existing Instance C.OutputCAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := false.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : widen_carry_opt := false.
+    Local Instance : widen_bytes_opt := false.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := false.
+    Local Instance : should_split_multiret_opt :=false.
+
+    Definition n := 3%nat (*5%nat*).
+    Definition s := 2^127 (* 255*).
+    Definition c := [(1, 1(*9*))].
+    Definition machine_wordsize := 64.
+
+    Import IR.Compilers.ToString.
+
+    Goal True.
+      pose (sfrom_bytes n s c machine_wordsize "1271") as v.
+      cbv [sfrom_bytes] in v.
+      set (k := from_bytes _ _ _ _) in (value of v).
+      clear v.
+      cbv [from_bytes] in k.
+      cbv [Pipeline.BoundsPipeline] in k.
+      set (k' := Pipeline.PreBoundsPipeline _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k'' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in k''.
+      lazymatch (eval cbv [k''] in k'') with
+      | @inl ?A ?B ?v => pose v as V; change k'' with (@inl A B V) in (value of k)
+      end.
+      cbv beta iota zeta in k.
+      clear k''.
+      set (e := GeneralizeVar.FromFlat _) in (value of k).
+      vm_compute in e.
+      set (k'' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      cbv [CheckedPartialEvaluateWithBounds] in k''.
+      clear -k''.
+      cbv [Rewriter.Util.LetIn.Let_In] in k''.
+      set (e' := (GeneralizeVar.FromFlat (GeneralizeVar.ToFlat e))) in (value of k'').
+      vm_compute in e'; clear e; rename e' into e.
+      set (b := (partial.Extract _ _ _)) in (value of k'').
+      clear -b.
+      cbv [partial.Extract partial.ident.extract partial.extract_gen type.app_curried partial.extract'] in b.
+      subst e.
+      cbv beta iota zeta in b.
+      Import Rewriter.Util.LetIn.
+      cbn [partial.abstract_interp_ident] in b.
+      cbv [partial.abstract_interp_ident] in b.
+      cbv [ZRange.ident.option.interp] in b.
+      cbv [ZRange.ident.option.of_literal] in b.
+      cbn [ZRange.ident.option.interp_Z_cast option_map] in b.
+      cbv [partial.abstract_domain ZRange.type.base.option.interp type.interp ZRange.type.base.interp] in b.
+      cbn [fst snd] in b.
+      (do 54 try (lazymatch (eval cbv [b] in b) with
+                  | dlet x := ?v in _ => let v' := (eval vm_compute in v) in change v with v' in (value of b)
+                  end;
+                  unfold Let_In at 1 in (value of b));
+          try lazymatch (eval cbv [b] in b) with
+              | dlet x := ?v in _ => let v' := (eval vm_compute in v) in change v with v' in (value of b)
+              end).
+      (*
+      unfold Let_In at 1 in (value of b).
+      lazymatch (eval cbv [b] in b) with
+      | context[Crypto.Util.Option.bind ?v _] => let v' := (eval vm_compute in v) in change v with v' in (value of b)
+      end.
+      cbn [Crypto.Util.Option.bind] in b.
+      set (k' := Operations.ZRange.land_bounds _ _) in (value of b).
+      cbv [Operations.ZRange.land_bounds] in k'.
+      clear -k'.*)
+    Abort.
+  End __.
+End debugging_21271_from_bytes.
+
+Module debugging_sat_solinas_25519.
+  Section __.
+    Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+    Import Stringification.C.
+    Import Stringification.C.Compilers.
+    Import Stringification.C.Compilers.ToString.
+
+    (* We split these off to make things a bit easier on typeclass resolution and speed things up. *)
+    Local Existing Instances ToString.C.OutputCAPI Pipeline.show_ErrorMessage.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : static_opt := true.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : should_split_mul_opt := false.
+    Local Instance : should_split_multiret_opt := false.
+    Local Instance : widen_carry_opt := false.
+    Local Instance : widen_bytes_opt := true. (* true, because we don't allow byte-sized things anyway, so we should not expect carries to be widened to byte-size when emitting C code *)
+
+    (** ======= these are the changable parameters ====== *)
+    Let s := 2^256.
+    Let c := [(1, 38)].
+    Let machine_wordsize := 64.
+    (** ================================================= *)
+    Let possible_values := prefix_with_carry [machine_wordsize].
+    Local Instance : machine_wordsize_opt := machine_wordsize. (* for show *)
+    Local Instance : no_select_size_opt := no_select_size_of_no_select machine_wordsize.
+    Local Instance : split_mul_to_opt := split_mul_to_of_should_split_mul machine_wordsize possible_values.
+    Local Instance : split_multiret_to_opt := split_multiret_to_of_should_split_multiret machine_wordsize possible_values.
+    Let n : nat := Z.to_nat (Qceiling (Z.log2_up s / machine_wordsize)).
+    Let m := s - Associational.eval c.
+    (* Number of reductions is calculated as follows :
+         Let i be the highest limb index of c. Then, each reduction
+         decreases the number of extra limbs by (n-i-1). (The -1 comes
+         from possibly having an extra high partial product at the end
+         of a reduction.) So, to go from the n extra limbs we have
+         post-multiplication down to 0, we need ceil (n / (n - i - 1))
+         reductions.  In some cases. however, [n - i <= 1], and in
+         this case, we do [n] reductions (is this enough?). *)
+  Let nreductions : nat :=
+    let i := fold_right Z.max 0 (map (fun t => Z.log2 (fst t) / machine_wordsize) c) in
+    if Z.of_nat n - i <=? 1
+    then n
+    else Z.to_nat (Qceiling (Z.of_nat n / (Z.of_nat n - i - 1))).
+    Let bound := Some r[0 ~> (2^machine_wordsize - 1)]%zrange.
+    Let boundsn : list (ZRange.type.option.interp base.type.Z)
+      := repeat bound n.
+
+    Time Redirect "log" Compute
+         Show.show (* [show] for pretty-printing of the AST without needing lots of imports *)
+         (Pipeline.BoundsPipelineToString
+            "fiat" "mul"
+            false (* subst01 *)
+            false (* inline *)
+            None (* fancy *)
+            possible_values
+            machine_wordsize
+            ltac:(let n := (eval cbv in n) (* needs to be reduced to reify correctly *) in
+                  let nreductions := (eval cbv in nreductions) (* needs to be reduced to reify correctly *) in
+                  let r := Reify (@Saturated.Rows.mulmod (weight machine_wordsize 1) (2^machine_wordsize) s c n nreductions) in
+                  exact r)
+                   (fun _ _ => []) (* comment *)
+                   (Some boundsn, (Some boundsn, tt))
+                   (Some boundsn, None (* Should be: Some r[0~>0]%zrange, but bounds analysis is not good enough *) )
+                   (None, (None, tt))
+                   (None, None)
+          : Pipeline.ErrorT _).
+    (* Finished transaction in 6.9 secs (4.764u,0.001s) (successful) *)
+  End __.
+End debugging_sat_solinas_25519.
+
+Module debugging_sat_solinas_25519_expanded_straightforward.
+  Import PreExtra.
+  Import Util.LetIn.
+  Import ZUtil.Definitions.
+  Module Saturated.
+    Module Associational.
+      Definition sat_multerm :=
+        fun (s : Z) (t t' : Z * Z) =>
+          dlet xy : Z * Z := Z.mul_split s (snd t) (snd t') in
+          dlet _ := ident.comment ("sat_multerm", ("xy", xy)) in
+          [(fst t * fst t', fst xy); (fst t * fst t' * s, snd xy)].
+      Definition sat_mul :=
+        fun (s : Z) (p q : list (Z * Z)) =>
+          flat_map
+            (fun t : Z * Z =>
+               flat_map
+                 (fun t' : Z * Z => sat_multerm s t t') q)
+            p.
+      Definition sat_multerm_const :=
+        fun (s : Z) (t t' : Z * Z) =>
+          if snd t =? 1
+          then [(fst t * fst t', snd t')]
+          else
+            if snd t =? -1
+            then [(fst t * fst t', - snd t')]
+            else
+              if snd t =? 0
+              then []
+              else
+                dlet xy : Z * Z := Z.mul_split s (snd t) (snd t') in
+          [(fst t * fst t', fst xy); (fst t * fst t' * s, snd xy)].
+      Definition sat_mul_const :=
+        fun (s : Z) (p q : list (Z * Z)) =>
+          flat_map
+            (fun t : Z * Z =>
+               flat_map
+                 (fun t' : Z * Z =>
+                    sat_multerm_const s t t') q) p.
+    End Associational.
+    Module Columns.
+      Definition cons_to_nth :=
+        fun (i : nat) (x : Z) (xs : list (list Z)) =>
+          Crypto.Util.ListUtil.update_nth i (fun y : list Z => x :: y) xs.
+      Definition nils : nat -> list (list Z) := fun n => repeat [] n.
+      Definition from_associational :=
+        fun (weight : nat -> Z) (n : nat) (p : list (Z * Z)) =>
+          fold_right
+            (fun (t : Z * Z) (ls : list (list Z)) =>
+               dlet p0 : nat * Z := place weight t (Init.Nat.pred n) in
+                 cons_to_nth (fst p0) (snd p0) ls)
+            (nils n) p.
+    End Columns.
+    Module Rows.
+      (* if [s] is not exactly equal to a weight, we must adjust it to
+         be a weight, so that rather than dividing by s and
+         multiplying by c, we divide by w and multiply by c*(w/s).
+         See
+         https://github.com/mit-plv/fiat-crypto/issues/326#issuecomment-404135131
+         for a bit more discussion *)
+      Definition adjust_s :=
+        fun (weight : nat -> Z) (fuel : nat) (s : Z) =>
+          fold_right
+            (fun (w_i : Z) '(v, found_adjustment) =>
+               let res0 := (v, found_adjustment) in
+               if found_adjustment : bool
+               then res0
+               else if w_i mod s =? 0 then (w_i, true) else res0)
+            (s, false) (map weight (rev (seq 0 fuel))).
+      Definition sat_reduce :=
+        fun (weight : nat -> Z) (base s : Z) (c : list (Z * Z))
+            (n : nat) (p : list (Z * Z)) =>
+          let
+            '(s', _) := adjust_s weight (S (S n)) s in
+          let lo_hi := split s' p in
+          fst lo_hi ++
+              Associational.sat_mul_const base [
+                (1, s' / s)]
+              (Associational.sat_mul_const base c (snd lo_hi)).
+      Definition repeat_sat_reduce :=
+        fun (weight : nat -> Z) (base s : Z) (c p : list (Z * Z)) (n : nat) =>
+          fold_right
+            (fun (_ : nat) (q : list (Z * Z)) =>
+               sat_reduce weight base s c n q) p
+            (seq 0 n).
+      Definition sum_rows' :=
+        fun (weight : nat -> Z) (start_state : list Z * Z * nat) (row1 row2 : list Z) =>
+          fold_right
+            (fun (next : Z * Z) (state : list Z * Z * nat) =>
+               let i := snd state in
+               let low_high' :=
+                   let low_high := fst state in
+                   let low := fst low_high in
+                   let high := snd low_high in
+                   dlet sum_carry : Z * Z := Z.add_with_get_carry_full
+                                               ((fun i0 : nat => weight (S i0) / weight i0) i)
+                                               high (fst next) (snd next) in
+               (low ++ [fst sum_carry], snd sum_carry) in
+                   (low_high', S i)) start_state (rev (combine row1 row2)).
+      Definition sum_rows :=
+        fun (weight : nat -> Z) (row1 row2 : list Z) =>
+          fst (sum_rows' weight ([], 0, 0%nat) row1 row2).
+      Definition flatten' :=
+        fun (weight : nat -> Z) (start_state : list Z * Z) (inp : list (list Z)) =>
+          fold_right
+            (fun (next_row : list Z) (state : list Z * Z) =>
+               let out_carry := sum_rows weight (fst state) next_row
+               in
+               (fst out_carry, snd state + snd out_carry)) start_state inp.
+      Definition flatten :=
+        fun (weight : nat -> Z) (n : nat) (inp : list (list Z)) =>
+          let default := zeros n in
+          flatten' weight (hd default inp, 0)
+                   (hd default (tl inp) :: tl (tl inp)).
+      Definition extract_row :=
+        fun inp : list (list Z) =>
+          (map (fun c : list Z => tl c) inp, map (fun c : list Z => hd 0 c) inp).
+      Definition from_columns' :=
+        fun (n : nat) (start_state : list (list Z) * list (list Z)) =>
+          fold_right
+            (fun (_ : Z) (state : list (list Z) * list (list Z)) =>
+               let cols'_row := extract_row (fst state) in
+               (fst cols'_row, snd state ++ [snd cols'_row])) start_state
+            (repeat 0 n).
+      Definition from_columns :=
+        fun inp : list (list Z) =>
+          snd
+            (from_columns' (Saturated.Rows.max_column_size inp)
+                           (inp, [])).
+      Definition from_associational :=
+        fun (weight : nat -> Z) (n : nat) (p : list (Z * Z)) =>
+          from_columns
+            (Columns.from_associational weight n p).
+      Definition mulmod :=
+        fun (weight : nat -> Z) (base s : Z) (c : list (Z * Z))
+            (n nreductions : nat) (p q : list Z) =>
+          let p_a := to_associational weight n p in
+          let q_a := to_associational weight n q in
+          let pq_a := Associational.sat_mul base p_a q_a in
+          let r_a :=
+              Rows.repeat_sat_reduce weight base s c pq_a nreductions in
+          Rows.flatten weight n
+                       (Rows.from_associational weight n r_a).
+    End Rows.
+  End Saturated.
+
+  Section __.
+    Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+    Import Stringification.C.
+    Import Stringification.C.Compilers.
+    Import Stringification.C.Compilers.ToString.
+
+    (* We split these off to make things a bit easier on typeclass resolution and speed things up. *)
+    Local Existing Instances ToString.C.OutputCAPI Pipeline.show_ErrorMessage.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : static_opt := true.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : should_split_mul_opt := false.
+    Local Instance : should_split_multiret_opt := false.
+    Local Instance : widen_carry_opt := false.
+    Local Instance : widen_bytes_opt := true. (* true, because we don't allow byte-sized things anyway, so we should not expect carries to be widened to byte-size when emitting C code *)
+
+    (** ======= these are the changable parameters ====== *)
+    Let s := 2^256.
+    Let c := [(1, 38)].
+    Let machine_wordsize := 64.
+    (** ================================================= *)
+    Let possible_values := prefix_with_carry [machine_wordsize].
+    Local Instance : machine_wordsize_opt := machine_wordsize. (* for show *)
+    Local Instance : no_select_size_opt := no_select_size_of_no_select machine_wordsize.
+    Local Instance : split_mul_to_opt := split_mul_to_of_should_split_mul machine_wordsize possible_values.
+    Local Instance : split_multiret_to_opt := split_multiret_to_of_should_split_multiret machine_wordsize possible_values.
+    Let n : nat := Z.to_nat (Qceiling (Z.log2_up s / machine_wordsize)).
+    Let m := s - Associational.eval c.
+    (* Number of reductions is calculated as follows :
+         Let i be the highest limb index of c. Then, each reduction
+         decreases the number of extra limbs by (n-i-1). (The -1 comes
+         from possibly having an extra high partial product at the end
+         of a reduction.) So, to go from the n extra limbs we have
+         post-multiplication down to 0, we need ceil (n / (n - i - 1))
+         reductions.  In some cases. however, [n - i <= 1], and in
+         this case, we do [n] reductions (is this enough?). *)
+    Let nreductions : nat :=
+      let i := fold_right Z.max 0 (map (fun t => Z.log2 (fst t) / machine_wordsize) c) in
+      if Z.of_nat n - i <=? 1
+      then n
+      else Z.to_nat (Qceiling (Z.of_nat n / (Z.of_nat n - i - 1))).
+    Let bound := Some r[0 ~> (2^machine_wordsize - 1)]%zrange.
+    Let boundsn : list (ZRange.type.option.interp base.type.Z)
+      := repeat bound n.
+
+    Time Redirect "log"
+         Compute
+         Show.show (* [show] for pretty-printing of the AST without needing lots of imports *)
+         (Pipeline.BoundsPipelineToString
+            "fiat" "mul"
+            false (* subst01 *)
+            false (* inline *)
+            None (* fancy *)
+            possible_values
+            machine_wordsize
+            ltac:(let n := (eval cbv in n) (* needs to be reduced to reify correctly *) in
+                  let nreductions := (eval cbv in nreductions) (* needs to be reduced to reify correctly *) in
+                  let r := Reify (@Saturated.Rows.mulmod (weight machine_wordsize 1) (2^machine_wordsize) s c n nreductions) in
+                  exact r)
+                   (fun _ _ => []) (* comment *)
+                   (Some boundsn, (Some boundsn, tt))
+                   (Some boundsn, None (* Should be: Some r[0~>0]%zrange, but bounds analysis is not good enough *) )
+                   (None, (None, tt))
+                   (None, None)
+          : Pipeline.ErrorT _).
+    (* Finished transaction in 6.9 secs (4.764u,0.001s) (successful) *)
+  End __.
+End debugging_sat_solinas_25519_expanded_straightforward.
+
+Module debugging_sat_solinas_25519_expanded.
+  Import PreExtra.
+  Import Util.LetIn.
+  Import ZUtil.Definitions.
+  Module Saturated.
+    Module Associational.
+      Definition sat_multerm :=
+        fun (s : Z) (t t' : Z * Z) =>
+          dlet xy : Z * Z := Z.mul_split s (snd t) (snd t') in
+          dlet _ := ident.comment ("sat_multerm", ("xy", xy)) in
+          [(fst t * fst t', fst xy); (fst t * fst t' * s, snd xy)].
+      Definition sat_mul :=
+        fun (s : Z) (p q : list (Z * Z)) =>
+          flat_map
+            (fun t : Z * Z =>
+               flat_map
+                 (fun t' : Z * Z => sat_multerm s t t') q)
+            p.
+      Definition sat_multerm_const :=
+        fun (s : Z) (t t' : Z * Z) =>
+          if snd t =? 1
+          then [(fst t * fst t', snd t')]
+          else
+            if snd t =? -1
+            then [(fst t * fst t', - snd t')]
+            else
+              if snd t =? 0
+              then []
+              else
+                dlet xy : Z * Z := Z.mul_split s (snd t) (snd t') in
+          [(fst t * fst t', fst xy); (fst t * fst t' * s, snd xy)].
+      Definition sat_mul_const :=
+        fun (s : Z) (p q : list (Z * Z)) =>
+          flat_map
+            (fun t : Z * Z =>
+               flat_map
+                 (fun t' : Z * Z =>
+                    sat_multerm_const s t t') q) p.
+    End Associational.
+    Module Columns.
+      Definition cons_to_nth :=
+        fun (i : nat) (x : Z) (xs : list (list Z)) =>
+          Crypto.Util.ListUtil.update_nth i (fun y : list Z => x :: y) xs.
+      Definition nils : nat -> list (list Z) := fun n => repeat [] n.
+      Definition from_associational :=
+        fun (weight : nat -> Z) (n : nat) (p : list (Z * Z)) =>
+          fold_right
+            (fun (t : Z * Z) (ls : list (list Z)) =>
+               dlet p0 : nat * Z := place weight t (Init.Nat.pred n) in
+                 cons_to_nth (fst p0) (snd p0) ls)
+            (nils n) p.
+    End Columns.
+    Module Rows.
+      (* if [s] is not exactly equal to a weight, we must adjust it to
+         be a weight, so that rather than dividing by s and
+         multiplying by c, we divide by w and multiply by c*(w/s).
+         See
+         https://github.com/mit-plv/fiat-crypto/issues/326#issuecomment-404135131
+         for a bit more discussion *)
+      Definition adjust_s :=
+        fun (weight : nat -> Z) (fuel : nat) (s : Z) =>
+          fold_right
+            (fun (w_i : Z) '(v, found_adjustment) =>
+               let res0 := (v, found_adjustment) in
+               if found_adjustment : bool
+               then res0
+               else if w_i mod s =? 0 then (w_i, true) else res0)
+            (s, false) (map weight (rev (seq 0 fuel))).
+      Definition sat_reduce :=
+        fun (weight : nat -> Z) (base s : Z) (c : list (Z * Z))
+            (n : nat) (p : list (Z * Z)) =>
+          let
+            '(s', _) := adjust_s weight (S (S n)) s in
+          let lo_hi := split s' p in
+          fst lo_hi ++
+              Associational.sat_mul_const base [
+                (1, s' / s)]
+              (Associational.sat_mul_const base c (snd lo_hi)).
+      Definition repeat_sat_reduce :=
+        fun (weight : nat -> Z) (base s : Z) (c p : list (Z * Z)) (n : nat) =>
+          fold_right
+            (fun (_ : nat) (q : list (Z * Z)) =>
+               sat_reduce weight base s c n q) p
+            (seq 0 n).
+      Definition sum_rows' :=
+        fun (weight : nat -> Z) (start_state : list Z * Z * nat) (row1 row2 : list Z) =>
+          fold_right
+            (fun (next : Z * Z) (state : list Z * Z * nat) =>
+               let i := snd state in
+               let low_high' :=
+                   let low_high := fst state in
+                   let low := fst low_high in
+                   let high := snd low_high in
+                   dlet sum_carry : Z * Z := Z.add_with_get_carry_full
+                                               ((fun i0 : nat => weight (S i0) / weight i0) i)
+                                               high (fst next) (snd next) in
+               (low ++ [fst sum_carry], snd sum_carry) in
+                   (low_high', S i)) start_state (rev (combine row1 row2)).
+      Definition sum_rows :=
+        fun (weight : nat -> Z) (row1 row2 : list Z) =>
+          fst (sum_rows' weight ([], 0, 0%nat) row1 row2).
+      Definition flatten' :=
+        fun (weight : nat -> Z) (start_state : list Z * Z) (inp : list (list Z)) =>
+          fold_right
+            (fun (next_row : list Z) (state : list Z * Z) =>
+               let out_carry := sum_rows weight (fst state) next_row
+               in
+               (fst out_carry, snd state + snd out_carry)) start_state inp.
+      Definition flatten :=
+        fun (weight : nat -> Z) (n : nat) (inp : list (list Z)) =>
+          let default := zeros n in
+          flatten' weight (hd default inp, 0)
+                   (hd default (tl inp) :: tl (tl inp)).
+      Definition extract_row :=
+        fun inp : list (list Z) =>
+          (map (fun c : list Z => tl c) inp, map (fun c : list Z => hd 0 c) inp).
+      Definition from_columns' :=
+        fun (n : nat) (start_state : list (list Z) * list (list Z)) =>
+          fold_right
+            (fun (_ : Z) (state : list (list Z) * list (list Z)) =>
+               let cols'_row := extract_row (fst state) in
+               (fst cols'_row, snd state ++ [snd cols'_row])) start_state
+            (repeat 0 n).
+      Definition from_columns :=
+        fun inp : list (list Z) =>
+          snd
+            (from_columns' (Saturated.Rows.max_column_size inp)
+                           (inp, [])).
+      Definition from_associational :=
+        fun (weight : nat -> Z) (n : nat) (p : list (Z * Z)) =>
+          from_columns
+            (Columns.from_associational weight n p).
+      Definition mulmod :=
+        fun (weight : nat -> Z) (base s : Z) (c : list (Z * Z))
+            (n nreductions : nat) (p q : list Z) =>
+          let p_a := to_associational weight n p in
+          let q_a := to_associational weight n q in
+          let pq_a := Associational.sat_mul base p_a q_a in
+          let pq_r := fst (Rows.flatten weight (n+n) (Rows.from_associational weight (n+n) pq_a)) in
+
+          let pq_a := to_associational weight (n+n) pq_r in
+          let pq_a := Rows.sat_reduce weight base s c 1 pq_a in
+          let pq_r := fst (Rows.flatten weight (n+1) (Rows.from_associational weight (n+1) pq_a)) in
+
+          let pq_a := to_associational weight (n+1) pq_r in
+          let pq_a := Rows.sat_reduce weight base s c 1 pq_a in
+          let pq_r := Rows.flatten weight n (Rows.from_associational weight n pq_a) in
+
+          pq_r.
+    End Rows.
+  End Saturated.
+
+  Section __.
+    Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+    Import Stringification.C.
+    Import Stringification.C.Compilers.
+    Import Stringification.C.Compilers.ToString.
+
+    (* We split these off to make things a bit easier on typeclass resolution and speed things up. *)
+    Local Existing Instances ToString.C.OutputCAPI Pipeline.show_ErrorMessage.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : static_opt := true.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : should_split_mul_opt := false.
+    Local Instance : should_split_multiret_opt := false.
+    Local Instance : widen_carry_opt := false.
+    Local Instance : widen_bytes_opt := true. (* true, because we don't allow byte-sized things anyway, so we should not expect carries to be widened to byte-size when emitting C code *)
+
+    (** ======= these are the changable parameters ====== *)
+    Let s := 2^256.
+    Let c := [(1, 38)].
+    Let machine_wordsize := 64.
+    (** ================================================= *)
+    Let possible_values := prefix_with_carry [machine_wordsize].
+    Local Instance : machine_wordsize_opt := machine_wordsize. (* for show *)
+    Local Instance : no_select_size_opt := no_select_size_of_no_select machine_wordsize.
+    Local Instance : split_mul_to_opt := split_mul_to_of_should_split_mul machine_wordsize possible_values.
+    Local Instance : split_multiret_to_opt := split_multiret_to_of_should_split_multiret machine_wordsize possible_values.
+    Let n : nat := Z.to_nat (Qceiling (Z.log2_up s / machine_wordsize)).
+    Let m := s - Associational.eval c.
+    (* Number of reductions is calculated as follows :
+         Let i be the highest limb index of c. Then, each reduction
+         decreases the number of extra limbs by (n-i-1). (The -1 comes
+         from possibly having an extra high partial product at the end
+         of a reduction.) So, to go from the n extra limbs we have
+         post-multiplication down to 0, we need ceil (n / (n - i - 1))
+         reductions.  In some cases. however, [n - i <= 1], and in
+         this case, we do [n] reductions (is this enough?). *)
+    Let nreductions : nat := 2.
+    Let bound := Some r[0 ~> (2^machine_wordsize - 1)]%zrange.
+    Let boundsn : list (ZRange.type.option.interp base.type.Z)
+      := repeat bound n.
+
+    Time Redirect "log"
+         Compute
+         Show.show (* [show] for pretty-printing of the AST without needing lots of imports *)
+         (Pipeline.BoundsPipelineToString
+            "fiat" "mul"
+            false (* subst01 *)
+            false (* inline *)
+            None (* fancy *)
+            possible_values
+            machine_wordsize
+            ltac:(let n := (eval cbv in n) (* needs to be reduced to reify correctly *) in
+                  let nreductions := (eval cbv in nreductions) (* needs to be reduced to reify correctly *) in
+                  let r := Reify (@Saturated.Rows.mulmod (weight machine_wordsize 1) (2^machine_wordsize) s c n nreductions) in
+                  exact r)
+                   (fun _ _ => []) (* comment *)
+                   (Some boundsn, (Some boundsn, tt))
+                   (Some boundsn, None (* Should be: Some r[0~>0]%zrange, but bounds analysis is not good enough *) )
+                   (None, (None, tt))
+                   (None, None)
+          : Pipeline.ErrorT _).
+
+
+(*
+= "Success (""/*
+ * Input Bounds:
+ *   arg1: [[0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff]]
+ *   arg2: [[0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff]]
+ * Output Bounds:
+ *   out1: [[0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff]]
+ *   out2: None
+ */
+static void mul(uint64_t out1[4], fiatuint1* out2, const uint64_t arg1[4], const uint64_t arg2[4]) {
+// 16 mulx
+  uint64_t x1;
+  uint64_t x2;
+  fiatmulx_u64(&x1, &x2, (arg1[3]), (arg2[3]));
+  uint64_t x3;
+  uint64_t x4;
+  fiatmulx_u64(&x3, &x4, (arg1[3]), (arg2[2]));
+  uint64_t x5;
+  uint64_t x6;
+  fiatmulx_u64(&x5, &x6, (arg1[3]), (arg2[1]));
+  uint64_t x7;
+  uint64_t x8;
+  fiatmulx_u64(&x7, &x8, (arg1[3]), (arg2[0]));
+  uint64_t x9;
+  uint64_t x10;
+  fiatmulx_u64(&x9, &x10, (arg1[2]), (arg2[3]));
+  uint64_t x11;
+  uint64_t x12;
+  fiatmulx_u64(&x11, &x12, (arg1[2]), (arg2[2]));
+  uint64_t x13;
+  uint64_t x14;
+  fiatmulx_u64(&x13, &x14, (arg1[2]), (arg2[1]));
+  uint64_t x15;
+  uint64_t x16;
+  fiatmulx_u64(&x15, &x16, (arg1[2]), (arg2[0]));
+  uint64_t x17;
+  uint64_t x18;
+  fiatmulx_u64(&x17, &x18, (arg1[1]), (arg2[3]));
+  uint64_t x19;
+  uint64_t x20;
+  fiatmulx_u64(&x19, &x20, (arg1[1]), (arg2[2]));
+  uint64_t x21;
+  uint64_t x22;
+  fiatmulx_u64(&x21, &x22, (arg1[1]), (arg2[1]));
+  uint64_t x23;
+  uint64_t x24;
+  fiatmulx_u64(&x23, &x24, (arg1[1]), (arg2[0]));
+  uint64_t x25;
+  uint64_t x26;
+  fiatmulx_u64(&x25, &x26, (arg1[0]), (arg2[3]));
+  uint64_t x27;
+  uint64_t x28;
+  fiatmulx_u64(&x27, &x28, (arg1[0]), (arg2[2]));
+  uint64_t x29;
+  uint64_t x30;
+  fiatmulx_u64(&x29, &x30, (arg1[0]), (arg2[1]));
+  uint64_t x31;
+  uint64_t x32;
+  fiatmulx_u64(&x31, &x32, (arg1[0]), (arg2[0]));
+// 30 addcarryx and some normal additions
+  uint64_t x33;
+  fiatuint1 x34;
+  fiataddcarryx_u64(&x33, &x34, 0x0, x28, x7);
+  uint64_t x35;
+  fiatuint1 x36;
+  fiataddcarryx_u64(&x35, &x36, x34, x26, x5);
+  uint64_t x37 = (x36 + x18);
+  uint64_t x38;
+  fiatuint1 x39;
+  fiataddcarryx_u64(&x38, &x39, 0x0, x33, x13);
+  uint64_t x40;
+  fiatuint1 x41;
+  fiataddcarryx_u64(&x40, &x41, x39, x35, x8);
+  uint64_t x42;
+  fiatuint1 x43;
+  fiataddcarryx_u64(&x42, &x43, x41, x37, 0x0);
+  uint64_t x44 = (x43 + x10);
+  uint64_t x45;
+  fiatuint1 x46;
+  fiataddcarryx_u64(&x45, &x46, 0x0, x30, x15);
+  uint64_t x47;
+  fiatuint1 x48;
+  fiataddcarryx_u64(&x47, &x48, x46, x38, x16);
+  uint64_t x49;
+  fiatuint1 x50;
+  fiataddcarryx_u64(&x49, &x50, x48, x40, x11);
+  uint64_t x51;
+  fiatuint1 x52;
+  fiataddcarryx_u64(&x51, &x52, x50, x42, x3);
+  uint64_t x53;
+  fiatuint1 x54;
+  fiataddcarryx_u64(&x53, &x54, x52, x44, 0x0);
+  uint64_t x55 = (x54 + x2);
+  uint64_t x56;
+  fiatuint1 x57;
+  fiataddcarryx_u64(&x56, &x57, 0x0, x45, x21);
+  uint64_t x58;
+  fiatuint1 x59;
+  fiataddcarryx_u64(&x58, &x59, x57, x47, x19);
+  uint64_t x60;
+  fiatuint1 x61;
+  fiataddcarryx_u64(&x60, &x61, x59, x49, x14);
+  uint64_t x62;
+  fiatuint1 x63;
+  fiataddcarryx_u64(&x62, &x63, x61, x51, x6);
+  uint64_t x64;
+  fiatuint1 x65;
+  fiataddcarryx_u64(&x64, &x65, x63, x53, 0x0);
+  uint64_t x66;
+  fiatuint1 x67;
+  fiataddcarryx_u64(&x66, &x67, x65, x55, 0x0);
+  uint64_t x68;
+  fiatuint1 x69;
+  fiataddcarryx_u64(&x68, &x69, 0x0, x32, x23);
+  uint64_t x70;
+  fiatuint1 x71;
+  fiataddcarryx_u64(&x70, &x71, x69, x56, x24);
+  uint64_t x72;
+  fiatuint1 x73;
+  fiataddcarryx_u64(&x72, &x73, x71, x58, x22);
+  uint64_t x74;
+  fiatuint1 x75;
+  fiataddcarryx_u64(&x74, &x75, x73, x60, x17);
+  uint64_t x76;
+  fiatuint1 x77;
+  fiataddcarryx_u64(&x76, &x77, x75, x62, x9);
+  uint64_t x78;
+  fiatuint1 x79;
+  fiataddcarryx_u64(&x78, &x79, x77, x64, x1);
+  uint64_t x80;
+  fiatuint1 x81;
+  fiataddcarryx_u64(&x80, &x81, x79, x66, 0x0);
+  uint64_t x82;
+  fiatuint1 x83;
+  fiataddcarryx_u64(&x82, &x83, 0x0, x68, x29);
+  uint64_t x84;
+  fiatuint1 x85;
+  fiataddcarryx_u64(&x84, &x85, x83, x70, x27);
+  uint64_t x86;
+  fiatuint1 x87;
+  fiataddcarryx_u64(&x86, &x87, x85, x72, x25);
+  uint64_t x88;
+  fiatuint1 x89;
+  fiataddcarryx_u64(&x88, &x89, x87, x74, x20);
+  uint64_t x90;
+  fiatuint1 x91;
+  fiataddcarryx_u64(&x90, &x91, x89, x76, x12);
+  uint64_t x92;
+  fiatuint1 x93;
+  fiataddcarryx_u64(&x92, &x93, x91, x78, x4);
+  uint64_t x94;
+  fiatuint1 x95;
+  fiataddcarryx_u64(&x94, &x95, x93, x80, 0x0);
+  uint64_t x96;
+  uint64_t x97;
+  fiatmulx_u64(&x96, &x97, UINT8_C(0x26), x94);
+  uint64_t x98;
+  uint64_t x99;
+  fiatmulx_u64(&x98, &x99, UINT8_C(0x26), x92);
+  uint64_t x100;
+  uint64_t x101;
+  fiatmulx_u64(&x100, &x101, UINT8_C(0x26), x90);
+  uint64_t x102;
+  uint64_t x103;
+  fiatmulx_u64(&x102, &x103, UINT8_C(0x26), x88);
+  uint64_t x104;
+  fiatuint1 x105;
+  fiataddcarryx_u64(&x104, &x105, 0x0, x82, x100);
+  uint64_t x106;
+  fiatuint1 x107;
+  fiataddcarryx_u64(&x106, &x107, x105, x84, x98);
+  uint64_t x108;
+  fiatuint1 x109;
+  fiataddcarryx_u64(&x108, &x109, x107, x86, x96);
+  uint64_t x110 = (x109 + x97);
+  uint64_t x111;
+  fiatuint1 x112;
+  fiataddcarryx_u64(&x111, &x112, 0x0, x31, x102);
+  uint64_t x113;
+  fiatuint1 x114;
+  fiataddcarryx_u64(&x113, &x114, x112, x104, x103);
+  uint64_t x115;
+  fiatuint1 x116;
+  fiataddcarryx_u64(&x115, &x116, x114, x106, x101);
+  uint64_t x117;
+  fiatuint1 x118;
+  fiataddcarryx_u64(&x117, &x118, x116, x108, x99);
+  uint64_t x119 = (x118 + x110);
+  uint64_t x120;
+  uint64_t x121;
+  fiatmulx_u64(&x120, &x121, UINT8_C(0x26), x119);
+  uint64_t x122;
+  fiatuint1 x123;
+  fiataddcarryx_u64(&x122, &x123, 0x0, x111, x120);
+  uint64_t x124;
+  fiatuint1 x125;
+  fiataddcarryx_u64(&x124, &x125, x123, x113, 0x0);
+  uint64_t x126;
+  fiatuint1 x127;
+  fiataddcarryx_u64(&x126, &x127, x125, x115, 0x0);
+  uint64_t x128;
+  fiatuint1 x129;
+  fiataddcarryx_u64(&x128, &x129, x127, x117, 0x0);
+  out1[0] = x122;
+  out1[1] = x124;
+  out1[2] = x126;
+  out1[3] = x128;
+  *out2 = x129;
+}"", {| bitwidths_used := [uint1, uint64] ; addcarryx_lg_splits := [64] ; mulx_lg_splits := [64] ; cmovznz_bitwidths := [] |})"%string
+     : string
+*)
+
+
+
+    (* Finished transaction in 6.9 secs (4.764u,0.001s) (successful) *)
+  End __.
+End debugging_sat_solinas_25519_expanded.
+
+(*Require Import Crypto.Bedrock.Stringification.*)
+Module debugging_p256_mul_bedrock2.
+  Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+  Import Stringification.C.
+  Import Stringification.C.Compilers.
+  Import Stringification.C.Compilers.ToString.
+  Section __.
+    Local Existing Instance (*OutputBedrock2API*) C.OutputCAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := false.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := true.
+    Local Instance : should_split_multiret_opt := true.
+
+    Definition m := (2^64 - 1)%Z. (*(2^256 - 2^224 + 2^192 + 2^96 - 1)%Z.*)
+    Definition machine_wordsize := 64.
+
+    Import IR.Compilers.ToString.
+
+    Goal True.
+      pose (smul m machine_wordsize "p256") as v.
+      Import IdentifiersBasicGENERATED.Compilers.
+      cbv [smul] in v.
+      set (k := mul _ _) in (value of v).
+      vm_compute in v.
+      clear v.
+      cbv [mul] in k.
+      cbv -[Pipeline.BoundsPipeline WordByWordMontgomeryReificationCache.WordByWordMontgomery.reified_mul_gen] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      cbv [Pipeline.RewriteAndEliminateDeadAndInline] in k.
+      (*
+      set (k' := ArithWithCasts.Compilers.RewriteRules.RewriteArithWithCasts _ _ _) in (value of k).
+      vm_compute in k'.
+      Notation uint64 := (expr.Ident (ident_Literal r[0 ~> 18446744073709551615]%zrange)).
+      Notation "'(uint64)' x" := (#ident_Z_cast @ uint64 @ x)%expr (at level 0) : expr_scope.
+      Notation "'(uint64,uint64)' x" := (#ident_Z_cast2 @ (uint64, uint64) @ x)%expr (at level 0) : expr_scope.
+      subst k'; cbv beta iota zeta in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := UnderLets.LetBindReturn _ _) in (value of k) at 1.
+      vm_compute in k'; subst k'.
+      set (k' := ArithWithCasts.Compilers.RewriteRules.RewriteArithWithCasts _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      set (k' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      set (k' := MulSplit.Compilers.RewriteRules.RewriteMulSplit _ _ _ _) in (value of k) at 1.
+      vm_compute in k'.
+      subst k'.
+      set (k' := MultiRetSplit.Compilers.RewriteRules.RewriteMultiRetSplit _ _ _ _) in (value of k) at 2.
+      vm_compute in k'.
+      vm_compute in k.
+      vm_compute in k'.
+      Import IdentifiersBasicGENERATED.Compilers.
+      subst k'; cbv beta iota zeta in k.
+       *)
+    Abort.
+  End __.
+End debugging_p256_mul_bedrock2.
+
+Module debugging_25519_to_bytes_bedrock2.
+  Import Crypto.PushButtonSynthesis.UnsaturatedSolinas.
+  Import Stringification.C.
+  Import Stringification.C.Compilers.
+  Import Stringification.C.Compilers.ToString.
+  Section __.
+    Local Existing Instance C.OutputCAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := false.
+    Local Instance : use_mul_for_cmovznz_opt := false.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : only_signed_opt := false.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := true.
+    Local Instance : should_split_multiret_opt := true.
+
+    Definition n := 2%nat (*5%nat*).
+    Definition s := 2^127 (* 255*).
+    Definition c := [(1, 1(*9*))].
+    Definition machine_wordsize := 64.
+
+    Import IR.Compilers.ToString.
+
+    Goal True.
+      pose (sto_bytes n s c machine_wordsize "curve25519") as v.
+      cbv [sto_bytes] in v.
+      set (k := to_bytes _ _ _ _) in (value of v).
+      clear v.
+      (*
+      cbv [to_bytes] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      set (k' := Arith.Compilers.RewriteRules.RewriteArith _ _ _) in (value of k).
+      vm_compute in k'.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k'' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in k''.
+      set (uint64 := r[0 ~> 18446744073709551615]%zrange) in (value of k'').
+      subst k''.
+      cbv beta iota zeta in k.
+      set (k'' := Pipeline.RewriteAndEliminateDeadAndInline _ _ _ _ _) in (value of k).
+      vm_compute in k''.
+      Compute Z.log2 9223372036854775808.
+      clear -k''.
+      set (k'' := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
+      vm_compute in k''.
+      subst k''.
+      cbv beta iota zeta in k.
+      subst k'.
+      set (v := split_multiret_to machine_wordsize) in (value of k); vm_compute in v; subst v.
+      set (v := split_mul_to machine_wordsize) in (value of k); vm_compute in v; subst v.
+      cbv beta iota zeta in k.
+      set (k' := MulSplit.Compilers.RewriteRules.RewriteMulSplit _ _ _ _) in (value of k).
+      vm_compute in k'.
+      cbv [Pipeline.RewriteAndEliminateDeadAndInline] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k'' := MultiRetSplit.Compilers.RewriteRules.RewriteMultiRetSplit _ _ _ k') in (value of k).
+      clear k.
+      evar (varT : Type); evar (var : varT); subst varT.
+      evar (xT : Type); evar (x : xT); subst xT.
+      pose ((*Option.invert_Some*) (option_map (fun f => f x) (invert_expr.invert_Abs (k'' var)))) as k; subst k'' var x.
+      cbv [option_map Option.invert_Some invert_expr.invert_Abs MultiRetSplit.Compilers.RewriteRules.RewriteMultiRetSplit] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Make.GoalType.rewrite_head_gen] in k.
+      set (v := ProofsCommon.Compilers.RewriteRules.GoalType.DefaultOptionType.use_precomputed_functions _) in (value of k); vm_compute in v; subst v.
+      set (v := ProofsCommon.Compilers.RewriteRules.GoalType.DefaultOptionType.use_decision_tree _) in (value of k); vm_compute in v; subst v.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.Rewrite] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Make.GoalType.rewrite_head] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.rewrite] in k.
+      set (fuel := 6%nat) in (value of k).
+      cbn [Rewriter.Compilers.RewriteRules.Compile.repeat_rewrite] in k.
+      set (k'' := k' _) in (value of k).
+      match (eval cbv delta [k'] in k') with
+      | fun var : ?T => expr.Abs ?f
+        => evar (var' : T);
+             pose (match var' return _ with var => f end) as F; subst var';
+               assert (k'' = expr.Abs F) by reflexivity; clearbody k''; subst k''
+      end.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.reify] in k.
+      set (v := F _) in (value of k).
+      clear k'.
+      match (eval cbv delta [F] in F) with
+      | fun x : ?T => ?f
+        => evar (x' : T);
+             pose (match x' return _ with x => f end) as f'; subst x';
+               assert (v = f') by refine eq_refl; clearbody v; subst F v
+      end.
+      match (eval cbv delta [f'] in f') with
+      | expr.LetIn ?v ?f =>
+        pose v as V; pose f as F;
+          assert (f' = expr.LetIn V F) by refine eq_refl; clearbody f'; subst f'; rename F into f'
+      end.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k;
+        cbv [Rewriter.Compilers.RewriteRules.Compile.splice_value_with_lets Rewriter.Compilers.RewriteRules.Compile.splice_under_lets_with_value Rewriter.Compilers.RewriteRules.Compile.reify_and_let_binds_cps] in k.
+      set (k'' := Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup _ _ _) in (value of k).
+      vm_compute in k''.
+      subst k''.
+      cbn [UnderLets.splice] in k.
+      set (k' := UnderLets.reify_and_let_binds_base_cps _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbn [UnderLets.splice] in k.
+      subst V.
+      match (eval cbv delta [f'] in f') with
+      | fun x : ?T => expr.LetIn ?v ?f =>
+        pose (fun x : T => v) as V; pose (fun x : T => f) as F;
+          assert (f' = fun x : T => expr.LetIn (V x) (F x)) by refine eq_refl; clearbody f'; subst f'; rename F into f'
+      end.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k;
+        cbv [Rewriter.Compilers.RewriteRules.Compile.splice_value_with_lets Rewriter.Compilers.RewriteRules.Compile.splice_under_lets_with_value Rewriter.Compilers.RewriteRules.Compile.reify_and_let_binds_cps] in k.
+      subst V.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k;
+        cbv [Rewriter.Compilers.RewriteRules.Compile.splice_value_with_lets Rewriter.Compilers.RewriteRules.Compile.splice_under_lets_with_value Rewriter.Compilers.RewriteRules.Compile.reify_and_let_binds_cps] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.Base_value] in k.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      unfold MultiRetSplit.Compilers.RewriteRules.rewrite_head in (value of k) at 1.
+      cbn [IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args] in k;
+        cbv [Option.sequence_return Option.bind] in k.
+      cbn [UnderLets.splice] in k.
+      cbn [Rewriter.Compilers.RewriteRules.Compile.reflect] in k.
+      cbn [UnderLets.splice] in k.
+      unfold MultiRetSplit.Compilers.RewriteRules.rewrite_head in (value of k) at 1.
+      cbn [IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args] in k;
+        cbv [Option.sequence_return Option.bind] in k.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _ _) in (value of k) at 1.
+      set (v' := v _) in (value of k); subst v; rename v' into v.
+      cbn [UnderLets.to_expr] in k.
+      lazymatch (eval cbv delta [k] in k) with
+      | Some (expr.LetIn ?V (fun v : ?T => ?f))
+        => evar (v' : T); pose (match v' return _ with v => f end) as F;
+             subst v'
+      end.
+      clear k; rename F into k.
+      set (v' := v _) in (value of k); subst v; rename v' into v.
+      cbv beta iota zeta in v.
+      Import Util.Option.
+      set (uint64 := r[0 ~> 18446744073709551615]%zrange) in (value of v).
+      Arguments type.base {_ _}.
+      Arguments type.arrow {_ _ _}.
+      set (b := expr.App _ _) in (value of v) at 3.
+      cbn [MultiRetSplit.Compilers.RewriteRules.rewrite_head] in v.
+      Ltac separate H do_subst :=
+        lazymatch (eval cbv delta [H] in H) with
+        | expr.App ?x ?y => let x' := fresh in
+                            let y' := fresh in
+                            set (x' := x) in (value of H);
+                            set (y' := y) in (value of H);
+                            separate x' true; separate y' false;
+                            lazymatch do_subst with
+                            | true => subst H
+                            | false => idtac
+                            end
+        | _ => idtac
+        end.
+      separate b false.
+      subst b.
+      cbv beta iota in v.
+      subst H5.
+      clear -v.
+      cbv beta iota in v.
+      subst H9 H10 H8.
+      subst H6.
+      cbv beta iota in v.
+      subst H11 H12 H7.
+      subst H4.
+      cbv beta iota in v.
+      revert v; repeat match goal with H : _ |- _ => clear H end; intro v.
+      subst H18 H22 H14.
+      subst H2.
+      cbv beta iota in v.
+      subst H24 H28 H1.
+      subst H0.
+      cbv beta iota in v.
+      cbn [IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args Option.bind Option.sequence_return Option.sequence] in v.
+      cbn [Rewriter.Compilers.pattern.type.unify_extracted Rewriter.Compilers.pattern.base.unify_extracted] in v.
+      cbn [IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args Option.bind Option.sequence_return Option.sequence] in v.
+      cbn [type.type_beq base.type.type_beq andb] in v.
+      cbn [IdentifiersGENERATED.Compilers.pattern.ident.unify] in v.
+      cbn [Option.bind] in v.
+      cbv [type.try_make_transport_cps base.try_make_transport_cps type.try_make_transport_cpsv Compilers.try_make_base_transport_cps Compilers.eta_base_cps Compilers.eta_base_cps_gen proj1_sig Compilers.base_eq_dec Compilers.base_rec Compilers.base_rect Rewriter.Util.CPSNotations.cpsreturn id eq_rect Rewriter.Util.CPSNotations.cps_option_bind Rewriter.Util.CPSNotations.cpsbind Rewriter.Util.CPSNotations.cpscall] in v.
+      set (k' := andb _ _) in (value of v).
+      Compute is_bounded_by_bool (2 ^ 64) (Operations.ZRange.normalize uint64).
+      vm_compute in k'.
+      do 9 (unfold IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args in (value of v) at 1;
+            c
+            unfold Option.bind in (value of v) at 1).
+         do 5 (unfold IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args in (value of v) at 1;
+            unfold Option.bind in (value of v) at 1).
+      do 5 (unfold IdentifiersGENERATED.Compilers.pattern.ident.raw_invert_bind_args in (value of v) at 1;
+            unfold Option.bind in (value of v) at 1).
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      unfold Option.bind in (value of v) at 1.
+      cbn [Option.bind] in v.
+      cbn [
+      vm_compute in v.
+
+      set (idc := Compilers.ident_Z_sub_with_get_borrow) in (value of b).
+
+      subst b.
+
+      cbv beta iota in v.
+      cbv beta delta [MultiRetSplit.Compilers.RewriteRules.rewrite_head] in v.
+
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      vm_compute in v.
+      subst v.
+      cbn [UnderLets.splice] in k.
+
+
+
+      cbn [Rewriter.Compilers.RewriteRules.Compile.repeat_rewrite] in k.
+
+
+      subst k'; cbv beta in k''.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.splice_value_with_lets] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.splice_under_lets_with_value] in k.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.reify] in k.
+      subst k'.
+      cbv beta iota zeta in k.
+      set (v := fun x => UnderLets.to_expr _) in (value of k); clear k.
+      evar (xT : Type); evar (x : varT); subst
+      epose (var : _).
+      set (v := MultiRetSplit.Compilers.RewriteRules.rewrite_head _ _ _ _ _) in (value of k'').
+
+      Print Rewriter.Compilers.RewriteRules.Compile.repeat_rewrite.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.repeat_rewrite] in k''.
+      cbv [Rewriter.Compilers.RewriteRules.Compile.rewrite_bottomup] in k''.
+      vm_compute in k''.
+      cbv [split_multiret_to split_mul_to] in k.
+      cbv [should_split_multiret should_split_mul] in k.
+
+      vm_
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in v.
+      set (k := Language.Compilers.ToString.ToFunctionLines _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) in (value of v).
+      clear v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in k.
+      cbv [Java.OutputJavaAPI] in k.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in k.
+      cbv [Java.ToFunctionLines] in k.
+      set (k' := IR.OfPHOAS.ExprOfPHOAS _ _ _ _) in (value of k).
+      clear k.
+      cbv [IR.OfPHOAS.ExprOfPHOAS] in k'.
+      cbv [IR.OfPHOAS.expr_of_PHOAS] in k'.
+      set (k := IR.OfPHOAS.var_data_of_bounds _ _ _ _) in (value of k').
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in k'.
+      cbv [IR.OfPHOAS.expr_of_PHOAS'] in k'.
+      set (k := IR.OfPHOAS.var_data_of_bounds _ _ _ _) in (value of k').
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in k'.
+      cbv [invert_expr.invert_Abs] in k'.
+      cbv [IR.OfPHOAS.expr_of_base_PHOAS] in k'.
+      set (k := IR.OfPHOAS.make_assign_expr_of_PHOAS _ _) in (value of k') at 1.
+      cbv [IR.OfPHOAS.make_assign_expr_of_PHOAS] in k.
+      clear k'.
+      set (k' := type.try_transport _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_App_Z_cast2 _) in (value of k).
+      vm_compute in k'.
+
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_AppIdent_curried _) in (value of k); vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      set (k' := IR.OfPHOAS.arith_expr_of_PHOAS_args _) in (value of k).
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_args] in k'.
+      (*clear k.
+      set (k := IR.OfPHOAS.arith_expr_of_base_PHOAS _ _) in (value of k') at 1.
+      cbv [Language.Compilers.ToString.int.option.None] in k.
+      cbv [IR.OfPHOAS.arith_expr_for_base] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_base_PHOAS] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_ident] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_literal_Z] in k.
+      vm_compute in k.*)
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := Crypto.Util.Option.bind _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := Language.Compilers.ToString.int.of_zrange_relaxed _) in (value of k) at 1; vm_compute in k'; subst k'.
+      set (k' := Language.Compilers.ToString.int.of_zrange_relaxed _) in (value of k) at 1; vm_compute in k'; subst k'.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      (*cbv
+      vm_compute in k.
+      vm_compute in k'.
+      vm_compute in k'.
+      cbv -[Language.Compilers.ToString.ToFunctionLines] in v.
+      clear v.
+      cbv [to_bytes] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [possible_values_of_machine_wordsize_with_bytes] in k.
+      cbv [widen_bytes] in k.
+      cbv [widen_bytes_opt_instance_0] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      cbv [split_multiret_to] in k.
+      cbv [should_split_multiret] in k.
+      cbv [should_split_multiret_opt_instance_0] in k.
+      cbv [split_mul_to] in k.
+      cbv [should_split_mul] in k.
+      cbv [should_split_mul_opt_instance_0] in k.
+      cbv [only_signed_opt_instance_0] in k.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k) at 2.
+      vm_compute in k'.
+      subst k'.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k) at 1.
+      vm_compute in k'.
+      subst k'.
+      set (k' := PartialEvaluateWithBounds _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.*)
+*)
+    Abort.
+  End __.
+End debugging_25519_to_bytes_bedrock2.
+
+Local Instance : should_split_multiret_opt := false.
+Local Instance : split_multiret_to_opt := None.
+
+Module debugging_25519_to_bytes_java.
+  Import Crypto.PushButtonSynthesis.UnsaturatedSolinas.
+  Import Stringification.Java.
+  Section __.
+    Local Existing Instance Java.OutputJavaAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : only_signed_opt := true.
+    Local Instance : no_select_opt := false.
+    Local Instance : should_split_mul_opt := false. (* only for x64 *)
+
+    Definition n := 2%nat (*10%nat*).
+    Definition s := 2^51 (* 255*).
+    Definition c := [(1, 19)].
+    Definition machine_wordsize := 32.
+
+    Import IR.Compilers.ToString.
+
+    Goal True.
+      pose (sto_bytes n s c machine_wordsize "curve25519") as v.
+      cbv [sto_bytes] in v.
+      set (k := to_bytes _ _ _ _) in (value of v).
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in v.
+      set (k := Language.Compilers.ToString.ToFunctionLines _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) in (value of v).
+      clear v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in k.
+      cbv [Java.OutputJavaAPI] in k.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in k.
+      cbv [Java.ToFunctionLines] in k.
+      set (k' := IR.OfPHOAS.ExprOfPHOAS _ _ _ _ _ _) in (value of k).
+      clear k.
+      cbv [IR.OfPHOAS.ExprOfPHOAS IR.OfPHOAS.ExprOfPHOAS_cps IR.OfPHOAS.ExprOfPHOAS_with_opt_outbounds_cps IR.OfPHOAS.ExprOfPHOAS_cont] in k'.
+      cbv [IR.OfPHOAS.expr_of_PHOAS IR.OfPHOAS.expr_of_PHOAS_cps IR.OfPHOAS.expr_of_PHOAS_cont] in k'.
+      set (k := IR.OfPHOAS.var_data_of_bounds_and_typedefs _ _ _ _ _) in (value of k').
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in k'.
+      cbv [IR.OfPHOAS.expr_of_PHOAS' IR.OfPHOAS.expr_of_PHOAS'_cps IR.OfPHOAS.expr_of_PHOAS'_cont] in k'.
+      set (k := IR.OfPHOAS.var_data_of_bounds_and_typedefs _ _ _ _ _) in (value of k').
+      vm_compute in k.
+      subst k.
+      cbv beta iota zeta in k'.
+      cbv [invert_expr.invert_Abs] in k'.
+      cbv [IR.OfPHOAS.expr_of_base_PHOAS] in k'.
+      set (k := IR.OfPHOAS.make_assign_expr_of_PHOAS _ _) in (value of k') at 1.
+      cbv [IR.OfPHOAS.make_assign_expr_of_PHOAS] in k.
+      clear k'.
+      set (k' := type.try_transport _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_App_Z_cast2 _) in (value of k).
+      vm_compute in k'.
+
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_AppIdent_curried _) in (value of k); vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      set (k' := IR.OfPHOAS.arith_expr_of_PHOAS_args _) in (value of k).
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_args] in k'.
+      (*clear k.
+      set (k := IR.OfPHOAS.arith_expr_of_base_PHOAS _ _) in (value of k') at 1.
+      cbv [Language.Compilers.ToString.int.option.None] in k.
+      cbv [IR.OfPHOAS.arith_expr_for_base] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_base_PHOAS] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_ident] in k.
+      cbv [IR.OfPHOAS.arith_expr_of_PHOAS_literal_Z] in k.
+      vm_compute in k.*)
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota zeta in k.
+      set (k' := Crypto.Util.Option.bind _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := Language.Compilers.ToString.int.of_zrange_relaxed _) in (value of k) at 1; vm_compute in k'; subst k'.
+      set (k' := Language.Compilers.ToString.int.of_zrange_relaxed _) in (value of k) at 1; vm_compute in k'; subst k'.
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      (*
+      set (k' := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+      cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.result_upcast _ _) in (value of k) at 1; vm_compute in k'; subst k'.
+       *)
+      (*cbv
+      vm_compute in k.
+      vm_compute in k'.
+      vm_compute in k'.
+      cbv -[Language.Compilers.ToString.ToFunctionLines] in v.
+      clear v.
+      cbv [to_bytes] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [possible_values_of_machine_wordsize_with_bytes] in k.
+      cbv [widen_bytes] in k.
+      cbv [widen_bytes_opt_instance_0] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      cbv [split_multiret_to] in k.
+      cbv [should_split_multiret] in k.
+      cbv [should_split_multiret_opt_instance_0] in k.
+      cbv [split_mul_to] in k.
+      cbv [should_split_mul] in k.
+      cbv [should_split_mul_opt_instance_0] in k.
+      cbv [only_signed_opt_instance_0] in k.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k) at 2.
+      vm_compute in k'.
+      subst k'.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k) at 1.
+      vm_compute in k'.
+      subst k'.
+      set (k' := PartialEvaluateWithBounds _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.*)
+    Abort.
+  End __.
+End debugging_25519_to_bytes_java.
+
+Local Instance : only_signed_opt := false.
+Local Instance : no_select_opt := false.
+Local Instance : no_select_size_opt := None.
+
+Module debugging_p256_uint1.
+  Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+  Import Crypto.Arithmetic.WordByWordMontgomery.WordByWordMontgomery.
+  Import Stringification.Java.
+  Section __.
+    Local Existing Instance Java.OutputJavaAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := true.
+    Local Instance : inline_opt := true.
+    Local Instance : inline_internal_opt := true.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : should_split_mul_opt := false. (* only for x64 *)
+
+    Context (m : Z := 2^256 - 2^224 + 2^192 + 2^96 - 1)
+            (machine_wordsize : Z := 128).
+
+    Goal True.
+      pose (smul m machine_wordsize "p256") as v.
+      cbv [smul] in v.
+      set (k := WordByWordMontgomery.mul m machine_wordsize) in (value of v).
+      cbv [WordByWordMontgomery.mul] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      clear v.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat (GeneralizeVar.ToFlat _)) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      cbv [split_mul_to] in k.
+      cbv [should_split_mul] in k.
+      cbv [should_split_mul_opt_instance_0] in k.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      cbv [split_mul_to] in k.
+      cbv [should_split_mul] in k.
+      cbv [should_split_mul_opt_instance_0] in k.
+      cbv [split_multiret_to should_split_multiret should_split_multiret_opt_instance_0] in k.
+      vm_compute ZRange.type.base.option.is_tighter_than in k.
+      cbv beta iota zeta in k.
+      set (k' := PartialEvaluateWithBounds _ _ _ _ _ _) in (value of k) at 1.
+      vm_compute in k'.
+    Abort.
+  End __.
+End debugging_p256_uint1.
+
+Module debugging_go_build0.
+  Import Stringification.Go.
+  Section __.
+    Local Existing Instance Go.OutputGoAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := false.
+    Local Instance : inline_opt := false.
+    Local Instance : inline_internal_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : should_split_mul_opt := true. (* only for x64 *)
+
+    Context (n : nat := 3%nat)
+            (s : Z := 2^448)
+            (c : list (Z * Z) := [(2^224,1);(1,1)])
+            (machine_wordsize : Z := 512/3).
+    (*
+    Goal True.
+      pose (scarry_mul n s c machine_wordsize "p448_") as v.
+      cbv [scarry_mul] in v.
+      set (k := carry_mul n s c machine_wordsize) in (value of v).
+      vm_compute in k.
+      subst k.
+      cbv beta iota in v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in v.
+      cbv [Go.OutputGoAPI Crypto.Util.Option.sequence_return] in v.
+      cbv [Go.ToFunctionLines] in v.
+      set (k := IR.OfPHOAS.ExprOfPHOAS _ _ _ _) in (value of v).
+      clear v.
+      cbv [IR.OfPHOAS.ExprOfPHOAS IR.OfPHOAS.ExprOfPHOAS_cps IR.OfPHOAS.ExprOfPHOAS_with_opt_outbounds_cps IR.OfPHOAS.ExprOfPHOAS_cont] in k; rename k into v.
+      cbv [IR.OfPHOAS.expr_of_PHOAS IR.OfPHOAS.expr_of_PHOAS_cps IR.OfPHOAS.expr_of_PHOAS_cont] in v.
+      set (k := partial.Extract _ _ _) in (value of v).
+      cbv [partial.Extract] in k.
+      clear v; rename k into v.
+      cbv [partial.ident.extract] in v.
+      cbv [partial.extract_gen] in v.
+      cbv [type.app_curried] in v.
+      cbv delta [partial.extract'] in v.
+      cbv delta [partial.extract_gen] in v.
+      cbv beta in v.
+      cbv [type.app_curried] in v.
+      cbv delta [partial.extract'] in v.
+      cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      cbv iota in v; cbv beta in v.
+      do 50 (cbv iota in v; cbv beta in v).
+      Import Rewriter.Util.LetIn.
+      repeat match (eval cbv [v] in v) with
+             | Let_In ?x ?f
+               => let x := (eval vm_compute in x) in
+                  clear v; pose (f x) as v
+             end.
+      (*
+      cbv beta in v.
+      cbv [partial.abstract_interp_ident] in v.
+      set (k := ZRange.ident.option.interp true Compilers.ident_cons) in (value of v).
+      cbn in k; subst k; cbv beta in v.
+      set (k := ZRange.ident.option.interp true Compilers.ident_nil) in (value of v).
+      cbn in k; subst k; cbv beta in v.
+      cbn [option_map] in v.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 2; vm_compute in l.
+      subst l.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 3; vm_compute in l.
+      subst l.
+      set (l := ZRange.ident.option.interp true _) in (value of v) at 4; vm_compute in l.
+      subst l.
+       *)
+      (*
+      cbv [ZRange.ident.option.interp] in v.
+      cbv [
+      cbv beta zeta delta [Rewriter.Util.LetIn.Let_In].
+      cbv [partial.extract'] in v.
+      vm_compute in k.
+      vm_compute in k.
+      vm_compute in k; subst k.
+      cbv beta iota zeta in v.
+      set (v' := Go.to_function_lines _ _ _ _) in (value of v).
+
+      clear v; rename v' into v.
+      cbv [WordByWordMontgomery.add] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      set (k' := GeneralizeVar.ToFlat _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+       *)
+    Abort.
+     *)
+  End __.
+End debugging_go_build0.
+
+Module debugging_go_build.
+  Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+  Import Crypto.Arithmetic.WordByWordMontgomery.WordByWordMontgomery.
+  Import Stringification.Go.
+  Section __.
+    Local Existing Instance Go.OutputGoAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := false.
+    Local Instance : inline_opt := false.
+    Local Instance : inline_internal_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : should_split_mul_opt := true. (* only for x64 *)
+
+    Context (m : Z := 2^256 - 2^224 + 2^192 + 2^96 - 1)
+            (machine_wordsize : Z := 64).
+
+    (*
+    Goal True.
+      pose (sadd m machine_wordsize "p256") as v.
+      cbv [sadd] in v.
+      set (k := WordByWordMontgomery.add m machine_wordsize) in (value of v).
+      cbv [WordByWordMontgomery.add] in k.
+      cbv [possible_values_of_machine_wordsize] in k.
+      cbv [widen_carry] in k.
+      cbv [widen_carry_opt_instance_0] in k.
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline] in k.
+      set (k' := GeneralizeVar.ToFlat _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := GeneralizeVar.FromFlat _) in (value of k); vm_compute in k'; subst k'.
+      cbv [CheckedPartialEvaluateWithBounds] in k.
+      cbv [Rewriter.Util.LetIn.Let_In] in k.
+      set (k' := CheckCasts.GetUnsupportedCasts _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      cbv beta iota in k.
+      set (k' := partial.Extract _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      set (k' := ZRange.type.base.option.is_tighter_than _ _) in (value of k).
+      vm_compute in k'; subst k'.
+      cbv beta iota in k.
+      cbv [split_mul_to] in k.
+      cbv [should_split_mul] in k.
+      cbv [should_split_mul_opt_instance_0] in k.
+      set (k' := PartialEvaluateWithBounds _ _ _ _ _ _) in (value of k).
+      vm_compute in k'.
+      subst k'.
+      vm_compute in k.
+      Notation "'λ'" := (expr.Abs _).
+      Notation "'LET'" := (expr.LetIn _ _).
+      subst k.
+      cbv beta iota zeta in v.
+      Arguments String.append !_ !_ / .
+      cbn [String.append List.map List.app String.concat] in v.
+      cbv [Language.Compilers.ToString.ToFunctionLines] in v.
+      cbv [Crypto.Util.Option.sequence_return] in v.
+      cbv [Go.OutputGoAPI] in v.
+      cbn [type.map_for_each_lhs_of_arrow] in v.
+      cbv [Go.ToFunctionLines] in v.
+      set (k := IR.OfPHOAS.ExprOfPHOAS _ _ _ _) in (value of v).
+      clear v.
+      rename k into v.
+      cbn [type.final_codomain] in v.
+      cbn [Language.Compilers.ToString.OfPHOAS.var_data type.for_each_lhs_of_arrow] in v.
+      cbn [Language.Compilers.ToString.OfPHOAS.base_var_data] in v.
+      cbv [IR.OfPHOAS.ExprOfPHOAS IR.OfPHOAS.ExprOfPHOAS_cps IR.OfPHOAS.ExprOfPHOAS_with_opt_outbounds_cps IR.OfPHOAS.ExprOfPHOAS_cont] in v.
+      cbn [IR.OfPHOAS.expr_of_PHOAS IR.OfPHOAS.expr_of_PHOAS_cps IR.OfPHOAS.expr_of_PHOAS_cont] in v.
+      cbv [IR.OfPHOAS.expr_of_PHOAS IR.OfPHOAS.expr_of_PHOAS_cps IR.OfPHOAS.expr_of_PHOAS_cont] in v.
+      set (k := IR.OfPHOAS.var_data_of_bounds _ _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      cbn [IR.OfPHOAS.expr_of_PHOAS' IR.OfPHOAS.expr_of_PHOAS'_cps IR.OfPHOAS.expr_of_PHOAS'_cont] in v.
+      set (k := IR.OfPHOAS.var_data_of_bounds _ _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := IR.OfPHOAS.var_data_of_bounds _ _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      cbv [Show.show] in v.
+      cbv [Language.Compilers.ToString.PHOAS.type.show] in v.
+      cbn [Language.Compilers.ToString.PHOAS.type.show_type Language.Compilers.ToString.PHOAS.type.base.show] in v.
+      cbv [Language.Compilers.ToString.PHOAS.type.base.show] in v.
+      cbn [Language.Compilers.ToString.PHOAS.type.base.show_type Show.maybe_wrap_parens] in v.
+      cbv [Show.show] in v.
+      cbn [Language.Compilers.ToString.PHOAS.type.base.show_base] in v.
+      cbn [String.append List.map List.app String.concat] in v.
+      unfold invert_expr.invert_Abs at 1 in (value of v).
+      unfold invert_expr.invert_Abs at 1 in (value of v).
+      Time set (F := expr.LetIn _ _) in (value of v).
+      Arguments IR.OfPHOAS.make_assign_expr_of_PHOAS _ / .
+      Arguments Pos.to_nat !_ / .
+      Ltac bar v F X :=
+        (time (try lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+                   end;
+               lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+               clear F; rename F' into F; subst X;
+               cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v);
+         time (repeat lazymatch (eval cbv [v] in v) with
+                      | context C[match ?f ?x with _ => _ end]
+                        => let f' := Tactics.Head.head f in
+                           let fx := constr:(f x) in
+                           (*idtac fx "(" f' ")";*)
+                           let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                          | context C[fx]
+                                            => pose fx as k;
+                                               clear v;
+                                               let C' := context C[k] in
+                                               pose C' as v;
+                                               (vm_compute in k; subst k; cbv beta iota in v)
+                                          end in
+                           lazymatch f' with
+                           | @type.try_transport => do_vm ()
+                           | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                           | @invert_expr.invert_App_Z_cast => do_vm ()
+                           | @invert_expr.invert_App_curried => do_vm ()
+                           | @Option.bind => do_vm ()
+                           | @Crypto.Util.Option.bind => do_vm ()
+                           | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                           | @IR.OfPHOAS.bounds_check => do_vm ()
+                           | @fst => do_vm ()
+                           | @snd => do_vm ()
+                           | _ => progress cbn [f'] in v
+                           end
+                      end;
+               repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+               cbn -[F] in v));
+        time (repeat match (eval cbv [v] in v) with
+                     | context C[match match ?x with inl l => @?LX l | inr r => @?RX r end with inl l' => @?L l' | inr r' => @?R r' end]
+                       => let C' := context C[match x with inl l => match LX l with inl l' => L l' | inr r' => R r' end | inr r => match RX r with inl l' => L l' | inr r' => R r' end end] in
+                          let C' := (eval cbv beta iota zeta in C') in
+                          clear v; pose C' as v
+                     end).
+      Arguments IR.name_infos.adjust_dead : simpl never.
+      do 3 bar v F X.
+      do 1 bar v F X.
+      time (try lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+                end;
+            lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+            clear F; rename F' into F; subst X;
+            cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v).
+      cbn [IR.OfPHOAS.make_assign_expr_of_PHOAS] in v.
+      do 4 lazymatch (eval cbv [v] in v) with
+           | context C[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let fx := constr:(f x) in
+                (*idtac fx "(" f' ")";*)
+                let do_vm _ := lazymatch (eval cbv [v] in v) with
+                               | context C[fx]
+                                 => pose fx as k;
+                                      clear v;
+                                      let C' := context C[k] in
+                                      pose C' as v;
+                                        (vm_compute in k; subst k; cbv beta iota in v)
+                               end in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_Z_cast => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @Crypto.Util.Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | @IR.OfPHOAS.bounds_check => do_vm ()
+                | @fst => do_vm ()
+                | @snd => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      (*do 1 bar v F X.
+      Set Printing Depth 10000000.
+      do 2 bar v F X.
+      do 2 bar v F X.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end;
+        lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+        clear F; rename F' into F; subst X;
+          cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v.
+      cbn [IR.OfPHOAS.make_assign_expr_of_PHOAS] in v.*)
+      (*
+      do 4 lazymatch (eval cbv [v] in v) with
+           | context C[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let fx := constr:(f x) in
+                (*idtac fx "(" f' ")";*)
+                let do_vm _ := lazymatch (eval cbv [v] in v) with
+                               | context C[fx]
+                                 => pose fx as k;
+                                      clear v;
+                                      let C' := context C[k] in
+                                      pose C' as v;
+                                        (vm_compute in k; subst k; cbv beta iota in v)
+                               end in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_Z_cast => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @invert_expr.invert_AppIdent_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @Crypto.Util.Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | @IR.OfPHOAS.bounds_check => do_vm ()
+                | @fst => do_vm ()
+                | @snd => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      set (k := Language.Compilers.ToString.int.type_beq _ _) in (value of v).
+      vm_compute in k.
+      subst k.
+      cbv iota in v; cbv beta in v.
+      subst k; cbv beta iota in v.
+      do 4 lazymatch (eval cbv [v] in v) with
+           | context C[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let fx := constr:(f x) in
+                (*idtac fx "(" f' ")";*)
+                let do_vm _ := lazymatch (eval cbv [v] in v) with
+                               | context C[fx]
+                                 => pose fx as k;
+                                      clear v;
+                                      let C' := context C[k] in
+                                      pose C' as v;
+                                        (vm_compute in k; subst k; cbv beta iota in v)
+                               end in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_Z_cast => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @Crypto.Util.Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | @IR.OfPHOAS.bounds_check => do_vm ()
+                | @Language.Compilers.ToString.int.of_zrange_relaxed => do_vm ()
+                | @fst => do_vm ()
+                | @snd => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      do 1 lazymatch (eval cbv [v] in v) with
+           | context C[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let fx := constr:(f x) in
+                (*idtac fx "(" f' ")";*)
+                let do_vm _ := lazymatch (eval cbv [v] in v) with
+                               | context C[fx]
+                                 => pose fx as k;
+                                      clear v;
+                                      let C' := context C[k] in
+                                      pose C' as v;
+                                        (vm_compute in k; subst k; cbv beta iota in v)
+                               end in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_Z_cast => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @Crypto.Util.Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | @IR.OfPHOAS.bounds_check => do_vm ()
+                | @Language.Compilers.ToString.int.of_zrange_relaxed => do_vm ()
+                | @NatUtil.nat_beq => do_vm ()
+                | @fst => do_vm ()
+                | @snd => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+
+      set (k := IR.OfPHOAS.arith_expr_of_base_PHOAS _ _) in (value of v).
+      clear v; rename k into v.
+      cbv [IR.OfPHOAS.arith_expr_of_base_PHOAS] in v.
+      vm_compute in k.
+      subst k; cbv beta iota in v.
+      cbn [IR.OfPHOAS.arith_expr_of_base_PHOAS] in v.
+      set (k :=
+      cbn -[F] in v.
+
+      do 1 bar v F X.
+      Notation "'LL'" := expr.LetIn.
+
+      subst X; cbn -[F] in v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end.
+      Time match (eval cbv [F] in F) with context G[expr.LetIn ?x ?f] => set (F' := f) in (value of F); set (X := x) in (value of F) end;
+        subst F; rename F' into F.
+      cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v.
+      set (k := IR.OfPHOAS.make_assign_expr_of_PHOAS _ _ _ _ _ _) in (value of v).
+      clear v.
+      subst X.
+      cbv [IR.OfPHOAS.make_assign_expr_of_PHOAS] in k.
+      set (k' := type.try_transport _ _ _ _) in (value of k).
+      vm_compute in k'; subst k'; cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_App_Z_cast _) in (value of k); vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      set (k' := invert_expr.invert_AppIdent_curried _) in (value of k); vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.arith_expr_of_PHOAS_args _) in (value of k).
+      vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      set (k' := IR.OfPHOAS.arith_expr_of_base_PHOAS _ _) in (value of k).
+      vm_compute in k'.
+      subst k'; cbv beta iota zeta in k.
+      rename k into v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end.
+      Time match (eval cbv [F] in F) with context G[expr.LetIn ?x ?f] => set (F' := f) in (value of F); set (X := x) in (value of F) end;
+        subst F; rename F' into F.
+      cbn -[F] in v.
+      subst X.
+      cbv [IR.OfPHOAS.make_assign_expr_of_PHOAS] in v.
+      cbn -[F] in v.
+      About base.try_make_transport_cps.
+      Arguments base.try_make_transport_cps _ _ _ !_ !_ / .
+      cbn -[F] in v.
+      cbn -[F] in v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end.
+      lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+        clear F; rename F' into F.
+      subst X.
+      cbn -[F] in v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end;
+        lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+        clear F; rename F' into F; subst X.
+      cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v.
+      cbv [IR.OfPHOAS.make_assign_expr_of_PHOAS] in v.
+      set (k := type.try_transport _ _ _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := invert_expr.invert_App_Z_cast2 _) in (value of v); vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := invert_expr.invert_AppIdent_curried _) in (value of v);
+        vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := IR.OfPHOAS.arith_expr_of_PHOAS_args _) in (value of v);
+        vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := Crypto.Util.Option.bind _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := IR.OfPHOAS.bounds_check _ _ _ _ _ _) in (value of v).
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := fst _) in (value of v) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := snd _) in (value of v) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v).
+      cbn -[F] in v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end;
+        lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+        clear F; rename F' into F; subst X.
+      do 2 lazymatch (eval cbv [v] in v) with
+           | context[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                lazymatch f' with
+                | _ => cbn [f'] in v
+                end
+           end.
+      do 1 lazymatch (eval cbv [v] in v) with
+           | context[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                lazymatch f' with
+                | @type.try_transport => set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v
+                | _ => cbn [f'] in v
+                end
+           end.
+      do 3 lazymatch (eval cbv [v] in v) with
+           | context[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let do_vm _ := set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      do 2 lazymatch (eval cbv [v] in v) with
+           | context[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let do_vm _ := set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      do 1 lazymatch (eval cbv [v] in v) with
+           | context[match ?f ?x with _ => _ end]
+             => let f' := Tactics.Head.head f in
+                let do_vm _ := set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v in
+                lazymatch f' with
+                | @type.try_transport => do_vm ()
+                | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                | @invert_expr.invert_App_curried => do_vm ()
+                | @Option.bind => do_vm ()
+                | @Crypto.Util.Option.bind => do_vm ()
+                | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                | _ => progress cbn [f'] in v
+                end
+           end.
+      Time do 6 lazymatch (eval cbv [v] in v) with
+                | context[match ?f ?x with _ => _ end]
+                  => let f' := Tactics.Head.head f in
+                     let do_vm _ := (set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v) in
+                     lazymatch f' with
+                     | @type.try_transport => do_vm ()
+                     | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                     | @invert_expr.invert_App_curried => do_vm ()
+                     | @Option.bind => do_vm ()
+                     | @Crypto.Util.Option.bind => do_vm ()
+                     | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                     | @IR.OfPHOAS.bounds_check => do_vm ()
+                     | @fst => do_vm ()
+                     | @snd => do_vm ()
+                     | _ => progress cbn [f'] in v
+                     end
+                end.
+      repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v).
+      cbn -[F] in v.
+      lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+      end;
+        lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+        clear F; rename F' into F; subst X.
+      cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v.
+      Time do 2 lazymatch (eval cbv [v] in v) with
+                | context[match ?f ?x with _ => _ end]
+                  => let f' := Tactics.Head.head f in
+                     let fx := constr:(f x) in
+                     idtac fx "(" f' ")";
+                     let do_vm _ := (set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v) in
+                     lazymatch f' with
+                     | @type.try_transport => do_vm ()
+                     | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                     | @invert_expr.invert_App_curried => do_vm ()
+                     | @Option.bind => do_vm ()
+                     | @Crypto.Util.Option.bind => do_vm ()
+                     | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                     | @IR.OfPHOAS.bounds_check => do_vm ()
+                     | @fst => do_vm ()
+                     | @snd => do_vm ()
+                     | _ => progress cbn [f'] in v
+                     end
+                end.
+      Time do 2 lazymatch (eval cbv [v] in v) with
+                | context[match ?f ?x with _ => _ end]
+                  => let f' := Tactics.Head.head f in
+                     let fx := constr:(f x) in
+                     idtac fx "(" f' ")";
+                     let do_vm _ := (set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v) in
+                     lazymatch f' with
+                     | @type.try_transport => do_vm ()
+                     | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                     | @invert_expr.invert_App_curried => do_vm ()
+                     | @Option.bind => do_vm ()
+                     | @Crypto.Util.Option.bind => do_vm ()
+                     | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                     | @IR.OfPHOAS.bounds_check => do_vm ()
+                     | @fst => do_vm ()
+                     | @snd => do_vm ()
+                     | _ => progress cbn [f'] in v
+                     end
+                end.
+      Time do 2 lazymatch (eval cbv [v] in v) with
+                | context[match ?f ?x with _ => _ end]
+                  => let f' := Tactics.Head.head f in
+                     let fx := constr:(f x) in
+                     idtac fx "(" f' ")";
+                     let do_vm _ := (set (k := f x) in (value of v); vm_compute in k; subst k; cbv beta iota in v) in
+                     lazymatch f' with
+                     | @type.try_transport => do_vm ()
+                     | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                     | @invert_expr.invert_App_curried => do_vm ()
+                     | @Option.bind => do_vm ()
+                     | @Crypto.Util.Option.bind => do_vm ()
+                     | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                     | @IR.OfPHOAS.bounds_check => do_vm ()
+                     | @fst => do_vm ()
+                     | @snd => do_vm ()
+                     | _ => progress cbn [f'] in v
+                     end
+                end.
+      Time repeat lazymatch (eval cbv [v] in v) with
+                  | context C[match ?f ?x with _ => _ end]
+                    => let f' := Tactics.Head.head f in
+                       let fx := constr:(f x) in
+                       (*idtac fx "(" f' ")";*)
+                       let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                      | context C[fx]
+                                        => pose fx as k;
+                                             clear v;
+                                             let C' := context C[k] in
+                                             pose C' as v;
+                                               (vm_compute in k; subst k; cbv beta iota in v)
+                                      end in
+                       lazymatch f' with
+                       | @type.try_transport => do_vm ()
+                       | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                       | @invert_expr.invert_App_curried => do_vm ()
+                       | @Option.bind => do_vm ()
+                       | @Crypto.Util.Option.bind => do_vm ()
+                       | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                       | @IR.OfPHOAS.bounds_check => do_vm ()
+                       | @fst => do_vm ()
+                       | @snd => do_vm ()
+                       | _ => progress cbn [f'] in v
+                       end
+                  end;
+        repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+        cbn -[F] in v.
+      do 2 (time (lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+                  end;
+                  lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+                  clear F; rename F' into F; subst X;
+                  cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v);
+            time (repeat lazymatch (eval cbv [v] in v) with
+                         | context C[match ?f ?x with _ => _ end]
+                           => let f' := Tactics.Head.head f in
+                              let fx := constr:(f x) in
+                              (*idtac fx "(" f' ")";*)
+                              let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                             | context C[fx]
+                                               => pose fx as k;
+                                                  clear v;
+                                                  let C' := context C[k] in
+                                                  pose C' as v;
+                                                  (vm_compute in k; subst k; cbv beta iota in v)
+                                             end in
+                              lazymatch f' with
+                              | @type.try_transport => do_vm ()
+                              | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                              | @invert_expr.invert_App_curried => do_vm ()
+                              | @Option.bind => do_vm ()
+                              | @Crypto.Util.Option.bind => do_vm ()
+                              | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                              | @IR.OfPHOAS.bounds_check => do_vm ()
+                              | @fst => do_vm ()
+                              | @snd => do_vm ()
+                              | _ => progress cbn [f'] in v
+                              end
+                         end;
+                  repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+                  cbn -[F] in v)).
+      do 4 (time (lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+                  end;
+                  lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+                  clear F; rename F' into F; subst X;
+                  cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v);
+            time (repeat lazymatch (eval cbv [v] in v) with
+                         | context C[match ?f ?x with _ => _ end]
+                           => let f' := Tactics.Head.head f in
+                              let fx := constr:(f x) in
+                              (*idtac fx "(" f' ")";*)
+                              let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                             | context C[fx]
+                                               => pose fx as k;
+                                                  clear v;
+                                                  let C' := context C[k] in
+                                                  pose C' as v;
+                                                  (vm_compute in k; subst k; cbv beta iota in v)
+                                             end in
+                              lazymatch f' with
+                              | @type.try_transport => do_vm ()
+                              | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                              | @invert_expr.invert_App_curried => do_vm ()
+                              | @Option.bind => do_vm ()
+                              | @Crypto.Util.Option.bind => do_vm ()
+                              | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                              | @IR.OfPHOAS.bounds_check => do_vm ()
+                              | @fst => do_vm ()
+                              | @snd => do_vm ()
+                              | _ => progress cbn [f'] in v
+                              end
+                         end;
+                  repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+                  cbn -[F] in v)).
+      Set Printing Depth 10000000.
+      Ltac foo v F X :=
+        (time (lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+               end;
+               lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+               clear F; rename F' into F; subst X;
+               cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v);
+         time (repeat lazymatch (eval cbv [v] in v) with
+                      | context C[match ?f ?x with _ => _ end]
+                        => let f' := Tactics.Head.head f in
+                           let fx := constr:(f x) in
+                           (*idtac fx "(" f' ")";*)
+                           let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                          | context C[fx]
+                                            => pose fx as k;
+                                               clear v;
+                                               let C' := context C[k] in
+                                               pose C' as v;
+                                               (vm_compute in k; subst k; cbv beta iota in v)
+                                          end in
+                           lazymatch f' with
+                           | @type.try_transport => do_vm ()
+                           | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                           | @invert_expr.invert_App_curried => do_vm ()
+                           | @Option.bind => do_vm ()
+                           | @Crypto.Util.Option.bind => do_vm ()
+                           | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                           | @IR.OfPHOAS.bounds_check => do_vm ()
+                           | @fst => do_vm ()
+                           | @snd => do_vm ()
+                           | _ => progress cbn [f'] in v
+                           end
+                      end;
+               repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+               cbn -[F] in v));
+        time (repeat match (eval cbv [v] in v) with
+                     | context C[match match ?x with inl l => @?LX l | inr r => @?RX r end with inl l' => @?L l' | inr r' => @?R r' end]
+                       => let C' := context C[match x with inl l => match LX l with inl l' => L l' | inr r' => R r' end | inr r => match RX r with inl l' => L l' | inr r' => R r' end end] in
+                          let C' := (eval cbv beta iota zeta in C') in
+                          clear v; pose C' as v
+                     end).
+      do 2 foo v F X.
+      Import ListNotations.
+      do 4 foo v F X.
+      Ltac bar v F X :=
+        (time (lazymatch (eval cbv [v] in v) with context[F ?x] => pose (F x) as F'; change (F x) with F' in (value of v); subst F; rename F' into F; cbv beta iota zeta in F, v
+               end;
+               lazymatch (eval cbv [F] in F) with @expr.LetIn ?b ?i ?v ?A ?B ?x ?f => pose f as F'; pose x as X; change F with (@expr.LetIn b i v A B X F') in * end;
+               clear F; rename F' into F; subst X;
+               cbn [IR.OfPHOAS.expr_of_base_PHOAS] in v);
+         time (repeat lazymatch (eval cbv [v] in v) with
+                      | context C[match ?f ?x with _ => _ end]
+                        => let f' := Tactics.Head.head f in
+                           let fx := constr:(f x) in
+                           (*idtac fx "(" f' ")";*)
+                           let do_vm _ := lazymatch (eval cbv [v] in v) with
+                                          | context C[fx]
+                                            => pose fx as k;
+                                               clear v;
+                                               let C' := context C[k] in
+                                               pose C' as v;
+                                               (vm_compute in k; subst k; cbv beta iota in v)
+                                          end in
+                           lazymatch f' with
+                           | @type.try_transport => do_vm ()
+                           | @invert_expr.invert_App_Z_cast2 => do_vm ()
+                           | @invert_expr.invert_App_curried => do_vm ()
+                           | @Option.bind => do_vm ()
+                           | @Crypto.Util.Option.bind => do_vm ()
+                           | @IR.OfPHOAS.arith_expr_of_PHOAS_args => do_vm ()
+                           | @IR.OfPHOAS.bounds_check => do_vm ()
+                           | @fst => do_vm ()
+                           | @snd => do_vm ()
+                           | _ => progress cbn [f'] in v
+                           end
+                      end;
+               repeat (set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v);
+               cbn -[F] in v)).
+      bar v F X.
+      match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end.
+      bar v F X.
+      match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end.
+      bar v F X.
+      match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end.
+      do 5 (bar v F X;
+            match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end).
+      do 5 (bar v F X;
+            match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end).
+      do 5 (bar v F X;
+            match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end).
+      do 5 (bar v F X;
+            match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end).
+      do 50 (bar v F X;
+            match (eval cbv [v] in v) with match ?x with _ => _ end => clear v; pose x as v end).
+      Notation "'LL'" := expr.LetIn.
+
+      vm_compute in v.
+      Set Printing All.
+      do 4 foo v F X.
+      do 16 foo v F X.
+      do 4 foo v F X.
+      Arguments
+
+      set (k := option_map _ _) in (value of v) at 1; vm_compute in k; subst k; cbv beta iota in v.
+      cbn [fst snd] in k.
+      clear v.
+      Arguments Z.pow_pos _ / .
+      Arguments Language.Compilers.ToString.int.of_zrange_relaxed _ / .
+      Arguments Language.Compilers.ToString.int.union _ / .
+      Arguments Language.Compilers.ToString.int.bitwidth_of _ / .
+      Arguments Language.Compilers.ToString.int.lgbitwidth_of _ / .
+      cbn [Z.pow Z.sub Z.add Z.mul Z.pow_pos Pos.iter Pos.mul Z.opp Z.pos_sub Pos.pred_double Pos.add Pos.succ Z.log2_up Z.compare Z.eqb Z.ltb Z.eqb Pos.compare Pos.compare_cont Z.pred Z.log2 Z.succ Pos.size Z.max Z.leb Z.to_nat Pos.to_nat Pos.iter_op Nat.add Z.of_nat Pos.iter Z.mul Pos.of_succ_nat Z.max Z.min
+                 Language.Compilers.ToString.int.of_zrange_relaxed
+                 option_map
+                 lower upper
+                 Language.Compilers.ToString.int.union Language.Compilers.ToString.int.to_zrange Language.Compilers.ToString.int.is_signed Language.Compilers.ToString.int.bitwidth_of Language.Compilers.ToString.int.lgbitwidth_of
+                 Operations.ZRange.union
+          ] in k.
+      cbn [Z.pow Z.sub Z.add Z.mul Z.pow_pos Pos.iter Pos.mul Z.opp Z.pos_sub Pos.pred_double Pos.add Pos.succ Z.log2_up Z.compare Z.eqb Z.ltb Z.eqb Pos.compare Pos.compare_cont Z.pred Z.log2 Z.succ Pos.size Z.max Z.leb Z.to_nat Pos.to_nat Pos.iter_op Nat.add Z.of_nat Pos.iter Z.mul Pos.of_succ_nat] in k.
+      cbn [Operations.ZRange.union lower upper] in k.
+      cbn [Z.pow Z.sub Z.add Z.mul Z.pow_pos Pos.iter Pos.mul Z.opp Z.pos_sub Pos.pred_double Pos.add Pos.succ Z.log2_up Z.compare Z.eqb Z.ltb Z.eqb Pos.compare Pos.compare_cont Z.pred Z.log2 Z.succ Pos.size Z.max Z.leb Z.to_nat Pos.to_nat Pos.iter_op Nat.add Z.of_nat Pos.iter Z.mul Pos.of_succ_nat Z.max Z.min] in k.
+      cbn [Language.Compilers.ToString.int.of_zrange_relaxed lower upper] in k.
+      cbn [] in k.
+      .
+
+      cbn in k.
+      cbn in k.
+      subst k; cbv beta iota zeta in v.
+      set (k := option_map _ _) in (value of v) at 1; vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+      cbn -[F] in v.
+      subst X
+      vm_compute in k.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in v.
+
+      vm
+      set (k := (1 + 1)%Z) in (value of v).
+      vm_compute in v.
+      vm_compute in k.
+      cbn [String
+
+
+      vm_compute in v.
+      pose (match snd v as v' return match v' with ErrorT.Error _ => _ | _ => _ end with
+            | ErrorT.Error v => v
+            | _ => I
+            end) as v'.
+      vm_compute in v'; clear v.
+      pose (Show.show_lines false v') as s.
+      cbv [Show.show_lines] in s.
+      cbv [Pipeline.show_lines_ErrorMessage] in s.
+      lazymatch (eval cbv [v'] in v') with context[fun var => @?F var] => set (F' := F) in (value of v') end.
+      subst v'.
+      cbv beta iota zeta in s.
+      cbv [Show.maybe_wrap_parens_lines Show.show_lines Language.Compilers.ToString.PHOAS.expr.show_lines_Expr] in s.
+      cbn [List.app] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_lines_Expr] in s.
+      subst F'; cbv beta iota zeta in s.
+      match (eval cbv [s] in s) with context G[expr.Abs ?f] => set (F := f) in (value of s) end.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_lines_expr] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in s.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      lazymatch (eval cbv [s] in s) with context[F ?v] => pose (F v) as F'; change (F v) with F' in (value of s); subst F; rename F' into F; cbv beta iota zeta in F, s
+      end.
+      match (eval cbv [F] in F) with context G[expr.Abs ?f] => set (F' := f) in (value of F) end;
+        subst F; rename F' into F.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      set (k := Decimal.decimal_string_of_pos 1) in (value of s); vm_compute in k; subst k.
+      set (k := Decimal.decimal_string_of_pos _) in (value of s); vm_compute in k; subst k.
+      cbn [String.append] in s.
+      set (k := Pos.succ 1) in (value of s); vm_compute in k; subst k.
+      set (k := Pos.succ _) in (value of s); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in s.
+      lazymatch (eval cbv [s] in s) with context[F ?v] => pose (F v) as F'; change (F v) with F' in (value of s); subst F; rename F' into F; cbv beta iota zeta in F, s
+      end.
+      match (eval cbv [F] in F) with context G[expr.LetIn ?x ?f] => set (F' := f) in (value of F); set (X := x) in (value of F) end;
+        subst F; rename F' into F.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in s.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in s.
+      set (k := Decimal.decimal_string_of_pos _) in (value of s); vm_compute in k; subst k.
+      set (k := Pos.succ _) in (value of s); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in s.
+      repeat match (eval cbv [s] in s) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear s; pose C' as s; cbv beta iota zeta in s
+             end.
+      vm_compute in s.
+      set (XX := Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps' _ _ X) in (value of s).
+      clear s.
+      subst X.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+
+      set (k := Decimal.decimal_string_of_pos _) in (value of XX); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in XX.
+      repeat match (eval cbv [XX] in XX) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear XX; pose C' as XX; cbv beta iota zeta in XX
+             end.
+      unfold Language.Compilers.ToString.PHOAS.expr.show_eta_cps at 1 in (value of XX).
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      cbn [String.append List.map List.app String.concat] in XX.
+      repeat match (eval cbv [XX] in XX) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear XX; pose C' as XX; cbv beta iota zeta in XX
+             end.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in XX.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+      cbv [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.ident.show_ident_lvl _ _ _) in (value of XX).
+      cbn in k.
+      subst k; cbv beta iota zeta in XX.
+      cbv [Ascii.NewLine] in XX.
+      cbn [String.append List.map List.app String.concat] in XX.*)
+    Abort.
+     *)
+  End __.
+End debugging_go_build.
+
+Module debugging_go_output.
+  Import Crypto.PushButtonSynthesis.WordByWordMontgomery.
+  Import Crypto.Arithmetic.WordByWordMontgomery.WordByWordMontgomery.
+  Import Stringification.Go.
+  Section __.
+    Local Existing Instance Go.OutputGoAPI.
+    Local Instance static : static_opt := false.
+    Local Instance : internal_static_opt := false.
+    Local Instance : inline_opt := false.
+    Local Instance : inline_internal_opt := false.
+    Local Instance : emit_primitives_opt := true.
+    Local Instance : use_mul_for_cmovznz_opt := true.
+    Local Instance : widen_carry_opt := true.
+    Local Instance : widen_bytes_opt := true.
+    Local Instance : should_split_mul_opt := true. (* only for x64 *)
+
+    Context (m : Z := 2^256 - 2^224 + 2^192 + 2^96 - 1)
+            (machine_wordsize : Z := 64).
+
+    (*
+    Goal True.
+      pose (smul m machine_wordsize "p256") as v.
+      cbv [smul] in v.
+      vm_compute in v.
+      pose (match snd v as v' return match v' with ErrorT.Error _ => _ | _ => _ end with
+            | ErrorT.Error v => v
+            | _ => I
+            end) as v'.
+      vm_compute in v'; clear v.
+      pose (Show.show_lines false v') as s.
+      cbv [Show.show_lines] in s.
+      cbv [Pipeline.show_lines_ErrorMessage] in s.
+      (*
+      lazymatch (eval cbv [v'] in v') with context[fun var => @?F var] => set (F' := F) in (value of v') end.
+      subst v'.
+      cbv beta iota zeta in s.
+      cbv [Show.maybe_wrap_parens_lines Show.show_lines Language.Compilers.ToString.PHOAS.expr.show_lines_Expr] in s.
+      cbn [List.app] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_lines_Expr] in s.
+      subst F'; cbv beta iota zeta in s.
+      match (eval cbv [s] in s) with context G[expr.Abs ?f] => set (F := f) in (value of s) end.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_lines_expr] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in s.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      Notation "'λ'" := (expr.Abs _).
+      Notation "'LET'" := (expr.LetIn _ _).
+      lazymatch (eval cbv [s] in s) with context[F ?v] => pose (F v) as F'; change (F v) with F' in (value of s); subst F; rename F' into F; cbv beta iota zeta in F, s
+      end.
+      match (eval cbv [F] in F) with context G[expr.Abs ?f] => set (F' := f) in (value of F) end;
+        subst F; rename F' into F.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      set (k := Decimal.decimal_string_of_pos 1) in (value of s); vm_compute in k; subst k.
+      set (k := Decimal.decimal_string_of_pos _) in (value of s); vm_compute in k; subst k.
+      Arguments String.append !_ !_ / .
+      cbn [String.append] in s.
+      set (k := Pos.succ 1) in (value of s); vm_compute in k; subst k.
+      set (k := Pos.succ _) in (value of s); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in s.
+      lazymatch (eval cbv [s] in s) with context[F ?v] => pose (F v) as F'; change (F v) with F' in (value of s); subst F; rename F' into F; cbv beta iota zeta in F, s
+      end.
+      match (eval cbv [F] in F) with context G[expr.LetIn ?x ?f] => set (F' := f) in (value of F); set (X := x) in (value of F) end;
+        subst F; rename F' into F.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in s.
+      progress cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in s.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in s.
+      set (k := Decimal.decimal_string_of_pos _) in (value of s); vm_compute in k; subst k.
+      set (k := Pos.succ _) in (value of s); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in s.
+      repeat match (eval cbv [s] in s) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear s; pose C' as s; cbv beta iota zeta in s
+             end.
+      vm_compute in s.
+      set (XX := Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps' _ _ X) in (value of s).
+      clear s.
+      subst X.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+
+      set (k := Decimal.decimal_string_of_pos _) in (value of XX); vm_compute in k; subst k.
+      cbn [String.append List.map List.app] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in XX.
+      repeat match (eval cbv [XX] in XX) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear XX; pose C' as XX; cbv beta iota zeta in XX
+             end.
+      unfold Language.Compilers.ToString.PHOAS.expr.show_eta_cps at 1 in (value of XX).
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      cbn [String.append List.map List.app String.concat] in XX.
+      repeat match (eval cbv [XX] in XX) with
+             | context C[let '(c, d) := let '(a, b) := ?x in @?F a b in @?G c d]
+               => let C' := context C[let '(a, b) := x in let '(c, d) := F a b in G c d] in
+                  clear XX; pose C' as XX; cbv beta iota zeta in XX
+             end.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_expr_lines] in XX.
+      cbv [Language.Compilers.ToString.PHOAS.expr.show_eta_cps] in XX.
+      cbn [Language.Compilers.ToString.PHOAS.expr.show_eta_abs_cps'] in XX.
+      cbv [Language.Compilers.ToString.PHOAS.expr.get_eta_cps_args] in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.expr.show_expr_lines _ _ _ _) in (value of XX) at 1.
+      vm_compute in k.
+      subst k; cbv beta iota zeta in XX.
+      set (k := Language.Compilers.ToString.PHOAS.ident.show_ident_lvl _ _ _) in (value of XX).
+      cbn in k.
+      subst k; cbv beta iota zeta in XX.
+      cbv [Ascii.NewLine] in XX.
+      cbn [String.append List.map List.app String.concat] in XX.*)
+    Abort.
+    *)
+  End __.
+End debugging_go_output.
+
+Import Stringification.C.
+Import Stringification.C.Compilers.
+
 Local Existing Instance ToString.C.OutputCAPI.
 Local Instance static : static_opt := true.
+Local Instance : internal_static_opt := true.
+Local Instance : inline_opt := true.
+Local Instance : inline_internal_opt := true.
+Local Instance : use_mul_for_cmovznz_opt := false.
 Local Instance : emit_primitives_opt := true.
 
 Module debugging_remove_mul_split_to_C_uint1_carry.
+  Import PreExtra.
+  Import LetIn.
   Section __.
     Context (n : nat := 5%nat)
             (s : Z := 2^255)
@@ -56,7 +3044,7 @@ Module debugging_remove_mul_split_to_C_uint1_carry.
     Local Instance split_mul_to : split_mul_to_opt := split_mul_to_of_should_split_mul machine_wordsize possible_values.
 
     Let prime_upperbound_list : list Z
-      := encode_no_reduce (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
+      := Partition.partition (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
     Let tight_upperbounds : list Z
       := List.map
            (fun v : Z => Qceiling (11/10 * v))
@@ -72,18 +3060,26 @@ Module debugging_remove_mul_split_to_C_uint1_carry.
 
     Set Printing Depth 100000.
     Local Open Scope string_scope.
-    Redirect "log" Compute
+
+    Redirect "log"
+      Compute
       Pipeline.BoundsPipelineToString
       "" (* prefix *)
       "mul"
       false (* subst01 *)
+      false (* inline *)
       None (* fancy *)
       possible_values
-      ltac:(let r := Reify ((carry_mulmod limbwidth_num limbwidth_den s c n idxs)) in
+      machine_wordsize
+      ltac:(let r := Reify ((fun f g => dlet _ := ident.comment ("foo", f, g) in carry_mulmod limbwidth_num limbwidth_den s c n idxs f g)) in
             exact r)
              (fun _ _ => []) (* comment *)
              (Some loose_bounds, (Some loose_bounds, tt))
-             (Some tight_bounds).
+             (Some tight_bounds)
+             (None, (None, tt))
+             None
+      : Pipeline.ErrorT _
+    .
 (* /*
  * Input Bounds:
  *   arg1: [[0x0 ~> 0x1a666666666664], [0x0 ~> 0x1a666666666664], [0x0 ~> 0x1a666666666664], [0x0 ~> 0x1a666666666664], [0x0 ~> 0x1a666666666664]]
@@ -92,6 +3088,7 @@ Module debugging_remove_mul_split_to_C_uint1_carry.
  *   out1: [[0x0 ~> 0x8cccccccccccc], [0x0 ~> 0x8cccccccccccc], [0x0 ~> 0x8cccccccccccc], [0x0 ~> 0x8cccccccccccc], [0x0 ~> 0x8cccccccccccc]]
  */
 static void mul(uint64_t out1[5], const uint64_t arg1[5], const uint64_t arg2[5]) {
+  /* (""foo"", arg1[0] :: arg1[1] :: arg1[2] :: arg1[3] :: arg1[4] :: [], arg2[0] :: arg2[1] :: arg2[2] :: arg2[3] :: arg2[4] :: []) */
   uint64_t x1;
   uint64_t x2;
   mulx_u64(&x1, &x2, (arg1[4]), ((arg2[4]) * (uint64_t)UINT8_C(0x13)));
@@ -354,7 +3351,7 @@ Module debugging_remove_mul_split.
     Local Instance split_mul_to : split_mul_to_opt := split_mul_to_of_should_split_mul machine_wordsize possible_values.
 
     Let prime_upperbound_list : list Z
-      := encode_no_reduce (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
+      := Partition.partition (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
     Let tight_upperbounds : list Z
       := List.map
            (fun v : Z => Qceiling (11/10 * v))
@@ -390,352 +3387,352 @@ Module debugging_remove_mul_split.
           λ x x0 : var (type.base (base.type.list (base.type.type_base base.type.Z))),
           expr_let x1 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[4]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[4]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[4]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[4]]))%expr_pat * ##19))))%expr_pat in
           expr_let x2 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[4]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[3]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[4]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[3]]))%expr_pat * ##19))))%expr_pat in
           expr_let x3 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[4]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[2]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[4]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[2]]))%expr_pat * ##19))))%expr_pat in
           expr_let x4 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[4]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[1]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[4]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[1]]))%expr_pat * ##19))))%expr_pat in
           expr_let x5 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[3]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[4]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[3]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[4]]))%expr_pat * ##19))))%expr_pat in
           expr_let x6 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[3]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[3]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[3]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[3]]))%expr_pat * ##19))))%expr_pat in
           expr_let x7 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[3]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[2]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[3]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[2]]))%expr_pat * ##19))))%expr_pat in
           expr_let x8 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[2]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[4]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[2]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[4]]))%expr_pat * ##19))))%expr_pat in
           expr_let x9 := ((#uint64,uint64)%expr @
                           ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                           ((#uint64)%expr @ ($x [[2]])) @
-                           ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[3]]))%expr_pat * ##19))))%expr_pat in
+                           ((#uint64)%expr @ ($$x [[2]])) @
+                           ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[3]]))%expr_pat * ##19))))%expr_pat in
           expr_let x10 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[1]])) @
-                            ((#uint64)%expr @ (((#uint64)%expr @ ($x0 [[4]]))%expr_pat * ##19))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[1]])) @
+                            ((#uint64)%expr @ (((#uint64)%expr @ ($$x0 [[4]]))%expr_pat * ##19))))%expr_pat in
           expr_let x11 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[4]])) @ ((#uint64)%expr @ ($x0 [[0]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[4]])) @ ((#uint64)%expr @ ($$x0 [[0]]))))%expr_pat in
           expr_let x12 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[3]])) @ ((#uint64)%expr @ ($x0 [[1]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[3]])) @ ((#uint64)%expr @ ($$x0 [[1]]))))%expr_pat in
           expr_let x13 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[3]])) @ ((#uint64)%expr @ ($x0 [[0]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[3]])) @ ((#uint64)%expr @ ($$x0 [[0]]))))%expr_pat in
           expr_let x14 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[2]])) @ ((#uint64)%expr @ ($x0 [[2]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[2]])) @ ((#uint64)%expr @ ($$x0 [[2]]))))%expr_pat in
           expr_let x15 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[2]])) @ ((#uint64)%expr @ ($x0 [[1]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[2]])) @ ((#uint64)%expr @ ($$x0 [[1]]))))%expr_pat in
           expr_let x16 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[2]])) @ ((#uint64)%expr @ ($x0 [[0]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[2]])) @ ((#uint64)%expr @ ($$x0 [[0]]))))%expr_pat in
           expr_let x17 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[1]])) @ ((#uint64)%expr @ ($x0 [[3]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[1]])) @ ((#uint64)%expr @ ($$x0 [[3]]))))%expr_pat in
           expr_let x18 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[1]])) @ ((#uint64)%expr @ ($x0 [[2]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[1]])) @ ((#uint64)%expr @ ($$x0 [[2]]))))%expr_pat in
           expr_let x19 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[1]])) @ ((#uint64)%expr @ ($x0 [[1]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[1]])) @ ((#uint64)%expr @ ($$x0 [[1]]))))%expr_pat in
           expr_let x20 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[1]])) @ ((#uint64)%expr @ ($x0 [[0]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[1]])) @ ((#uint64)%expr @ ($$x0 [[0]]))))%expr_pat in
           expr_let x21 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[0]])) @ ((#uint64)%expr @ ($x0 [[4]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[0]])) @ ((#uint64)%expr @ ($$x0 [[4]]))))%expr_pat in
           expr_let x22 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[0]])) @ ((#uint64)%expr @ ($x0 [[3]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[0]])) @ ((#uint64)%expr @ ($$x0 [[3]]))))%expr_pat in
           expr_let x23 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[0]])) @ ((#uint64)%expr @ ($x0 [[2]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[0]])) @ ((#uint64)%expr @ ($$x0 [[2]]))))%expr_pat in
           expr_let x24 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[0]])) @ ((#uint64)%expr @ ($x0 [[1]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[0]])) @ ((#uint64)%expr @ ($$x0 [[1]]))))%expr_pat in
           expr_let x25 := ((#uint64,uint64)%expr @
                            ((#ident.Z_mul_split)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ($x [[0]])) @ ((#uint64)%expr @ ($x0 [[0]]))))%expr_pat in
+                            ((#uint64)%expr @ ($$x [[0]])) @ ((#uint64)%expr @ ($$x0 [[0]]))))%expr_pat in
           expr_let x26 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x7)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x4))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x7)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x4))))%expr_pat in
           expr_let x27 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x26)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x7)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x4))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x26)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x7)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x4))))%expr_pat in
           expr_let x28 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x9)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x26))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x9)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x26))))%expr_pat in
           expr_let x29 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x28)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x9)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x27))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x28)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x9)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x27))))%expr_pat in
           expr_let x30 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x10)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x28))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x10)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x28))))%expr_pat in
           expr_let x31 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x30)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x10)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x29))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x30)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x10)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x29))))%expr_pat in
           expr_let x32 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x25)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x30))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x25)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x30))))%expr_pat in
           expr_let x33 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x32)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x25)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x31))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x32)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x25)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x31))))%expr_pat in
           expr_let x34 := ((#uint64)%expr @
                            (((#uint64)%expr @
-                             (((#uint64)%expr @ ((#ident.fst)%expr @ $x32))%expr_pat >> ##51))%expr_pat
+                             (((#uint64)%expr @ ((#ident.fst)%expr @ $$x32))%expr_pat >> ##51))%expr_pat
                             || ((#uint64)%expr @
                                 ((#ident.Z_truncating_shiftl)%expr @ ##64 @
-                                 ((#uint64)%expr @ ((#ident.fst)%expr @ $x33)) @ ##13))%expr_pat))%expr_pat in
+                                 ((#uint64)%expr @ ((#ident.fst)%expr @ $$x33)) @ ##13))%expr_pat))%expr_pat in
           expr_let x35 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.fst)%expr @ $x32))%expr_pat &'
+                           (((#uint64)%expr @ ((#ident.fst)%expr @ $$x32))%expr_pat &'
                             ##2251799813685247))%expr_pat in
           expr_let x36 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x12)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x11))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x12)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x11))))%expr_pat in
           expr_let x37 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x36)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x12)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x11))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x36)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x12)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x11))))%expr_pat in
           expr_let x38 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x14)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x36))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x14)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x36))))%expr_pat in
           expr_let x39 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x38)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x14)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x37))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x38)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x14)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x37))))%expr_pat in
           expr_let x40 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x17)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x38))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x17)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x38))))%expr_pat in
           expr_let x41 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x40)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x17)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x39))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x40)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x17)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x39))))%expr_pat in
           expr_let x42 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x21)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x40))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x21)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x40))))%expr_pat in
           expr_let x43 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x42)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x21)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x41))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x42)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x21)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x41))))%expr_pat in
           expr_let x44 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x13)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x1))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x13)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x1))))%expr_pat in
           expr_let x45 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x44)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x13)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x1))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x44)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x13)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x1))))%expr_pat in
           expr_let x46 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x15)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x44))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x15)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x44))))%expr_pat in
           expr_let x47 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x46)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x15)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x45))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x46)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x15)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x45))))%expr_pat in
           expr_let x48 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x18)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x46))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x18)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x46))))%expr_pat in
           expr_let x49 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x48)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x18)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x47))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x48)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x18)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x47))))%expr_pat in
           expr_let x50 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x22)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x48))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x22)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x48))))%expr_pat in
           expr_let x51 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x50)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x22)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x49))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x50)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x22)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x49))))%expr_pat in
           expr_let x52 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x5)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x2))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x5)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x2))))%expr_pat in
           expr_let x53 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x52)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x5)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x2))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x52)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x5)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x2))))%expr_pat in
           expr_let x54 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x16)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x52))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x16)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x52))))%expr_pat in
           expr_let x55 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x54)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x16)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x53))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x54)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x16)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x53))))%expr_pat in
           expr_let x56 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x19)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x54))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x19)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x54))))%expr_pat in
           expr_let x57 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x56)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x19)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x55))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x56)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x19)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x55))))%expr_pat in
           expr_let x58 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x23)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x56))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x23)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x56))))%expr_pat in
           expr_let x59 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x58)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x23)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x57))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x58)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x23)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x57))))%expr_pat in
           expr_let x60 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x6)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x3))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x6)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x3))))%expr_pat in
           expr_let x61 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x60)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x6)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x3))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x60)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x6)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x3))))%expr_pat in
           expr_let x62 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x8)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x60))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x8)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x60))))%expr_pat in
           expr_let x63 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x62)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x8)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x61))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x62)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x8)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x61))))%expr_pat in
           expr_let x64 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x20)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x62))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x20)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x62))))%expr_pat in
           expr_let x65 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x64)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x20)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x63))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x64)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x20)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x63))))%expr_pat in
           expr_let x66 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x24)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x64))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x24)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x64))))%expr_pat in
           expr_let x67 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_with_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x66)) @
-                            ((#uint64)%expr @ ((#ident.snd)%expr @ $x24)) @
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x65))))%expr_pat in
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x66)) @
+                            ((#uint64)%expr @ ((#ident.snd)%expr @ $$x24)) @
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x65))))%expr_pat in
           expr_let x68 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ $x34) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $x66))))%expr_pat in
+                            ((#uint64)%expr @ $$x34) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $$x66))))%expr_pat in
           expr_let x69 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.snd)%expr @ $x68))%expr_pat +
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x67))%expr_pat))%expr_pat in
+                           (((#uint64)%expr @ ((#ident.snd)%expr @ $$x68))%expr_pat +
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x67))%expr_pat))%expr_pat in
           expr_let x70 := ((#uint64)%expr @
                            (((#uint64)%expr @
-                             (((#uint64)%expr @ ((#ident.fst)%expr @ $x68))%expr_pat >> ##51))%expr_pat
+                             (((#uint64)%expr @ ((#ident.fst)%expr @ $$x68))%expr_pat >> ##51))%expr_pat
                             || ((#uint64)%expr @
-                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $x69) @
+                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $$x69) @
                                  ##13))%expr_pat))%expr_pat in
           expr_let x71 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.fst)%expr @ $x68))%expr_pat &'
+                           (((#uint64)%expr @ ((#ident.fst)%expr @ $$x68))%expr_pat &'
                             ##2251799813685247))%expr_pat in
           expr_let x72 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ $x70) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $x58))))%expr_pat in
+                            ((#uint64)%expr @ $$x70) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $$x58))))%expr_pat in
           expr_let x73 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.snd)%expr @ $x72))%expr_pat +
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x59))%expr_pat))%expr_pat in
+                           (((#uint64)%expr @ ((#ident.snd)%expr @ $$x72))%expr_pat +
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x59))%expr_pat))%expr_pat in
           expr_let x74 := ((#uint64)%expr @
                            (((#uint64)%expr @
-                             (((#uint64)%expr @ ((#ident.fst)%expr @ $x72))%expr_pat >> ##51))%expr_pat
+                             (((#uint64)%expr @ ((#ident.fst)%expr @ $$x72))%expr_pat >> ##51))%expr_pat
                             || ((#uint64)%expr @
-                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $x73) @
+                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $$x73) @
                                  ##13))%expr_pat))%expr_pat in
           expr_let x75 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.fst)%expr @ $x72))%expr_pat &'
+                           (((#uint64)%expr @ ((#ident.fst)%expr @ $$x72))%expr_pat &'
                             ##2251799813685247))%expr_pat in
           expr_let x76 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ $x74) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $x50))))%expr_pat in
+                            ((#uint64)%expr @ $$x74) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $$x50))))%expr_pat in
           expr_let x77 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.snd)%expr @ $x76))%expr_pat +
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x51))%expr_pat))%expr_pat in
+                           (((#uint64)%expr @ ((#ident.snd)%expr @ $$x76))%expr_pat +
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x51))%expr_pat))%expr_pat in
           expr_let x78 := ((#uint64)%expr @
                            (((#uint64)%expr @
-                             (((#uint64)%expr @ ((#ident.fst)%expr @ $x76))%expr_pat >> ##51))%expr_pat
+                             (((#uint64)%expr @ ((#ident.fst)%expr @ $$x76))%expr_pat >> ##51))%expr_pat
                             || ((#uint64)%expr @
-                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $x77) @
+                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $$x77) @
                                  ##13))%expr_pat))%expr_pat in
           expr_let x79 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.fst)%expr @ $x76))%expr_pat &'
+                           (((#uint64)%expr @ ((#ident.fst)%expr @ $$x76))%expr_pat &'
                             ##2251799813685247))%expr_pat in
           expr_let x80 := ((#uint64,uint64)%expr @
                            ((#ident.Z_add_get_carry)%expr @ ##18446744073709551616 @
-                            ((#uint64)%expr @ $x78) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $x42))))%expr_pat in
+                            ((#uint64)%expr @ $$x78) @ ((#uint64)%expr @ ((#ident.fst)%expr @ $$x42))))%expr_pat in
           expr_let x81 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.snd)%expr @ $x80))%expr_pat +
-                            ((#uint64)%expr @ ((#ident.fst)%expr @ $x43))%expr_pat))%expr_pat in
+                           (((#uint64)%expr @ ((#ident.snd)%expr @ $$x80))%expr_pat +
+                            ((#uint64)%expr @ ((#ident.fst)%expr @ $$x43))%expr_pat))%expr_pat in
           expr_let x82 := ((#uint64)%expr @
                            (((#uint64)%expr @
-                             (((#uint64)%expr @ ((#ident.fst)%expr @ $x80))%expr_pat >> ##51))%expr_pat
+                             (((#uint64)%expr @ ((#ident.fst)%expr @ $$x80))%expr_pat >> ##51))%expr_pat
                             || ((#uint64)%expr @
-                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $x81) @
+                                ((#ident.Z_truncating_shiftl)%expr @ ##64 @ ((#uint64)%expr @ $$x81) @
                                  ##13))%expr_pat))%expr_pat in
           expr_let x83 := ((#uint64)%expr @
-                           (((#uint64)%expr @ ((#ident.fst)%expr @ $x80))%expr_pat &'
+                           (((#uint64)%expr @ ((#ident.fst)%expr @ $$x80))%expr_pat &'
                             ##2251799813685247))%expr_pat in
-          expr_let x84 := ((#uint64)%expr @ (((#uint64)%expr @ $x82)%expr_pat * ##19))%expr_pat in
+          expr_let x84 := ((#uint64)%expr @ (((#uint64)%expr @ $$x82)%expr_pat * ##19))%expr_pat in
           expr_let x85 := ((#uint64)%expr @
-                           (((#uint64)%expr @ $x35)%expr_pat + ((#uint64)%expr @ $x84)%expr_pat))%expr_pat in
-          expr_let x86 := ((#uint64)%expr @ (((#uint64)%expr @ $x85)%expr_pat >> ##51))%expr_pat in
-          expr_let x87 := ((#uint64)%expr @ (((#uint64)%expr @ $x85)%expr_pat &' ##2251799813685247))%expr_pat in
+                           (((#uint64)%expr @ $$x35)%expr_pat + ((#uint64)%expr @ $$x84)%expr_pat))%expr_pat in
+          expr_let x86 := ((#uint64)%expr @ (((#uint64)%expr @ $$x85)%expr_pat >> ##51))%expr_pat in
+          expr_let x87 := ((#uint64)%expr @ (((#uint64)%expr @ $$x85)%expr_pat &' ##2251799813685247))%expr_pat in
           expr_let x88 := ((#uint64)%expr @
-                           (((#uint64)%expr @ $x86)%expr_pat + ((#uint64)%expr @ $x71)%expr_pat))%expr_pat in
-          expr_let x89 := ((#uint64)%expr @ (((#uint64)%expr @ $x88)%expr_pat >> ##51))%expr_pat in
-          expr_let x90 := ((#uint64)%expr @ (((#uint64)%expr @ $x88)%expr_pat &' ##2251799813685247))%expr_pat in
+                           (((#uint64)%expr @ $$x86)%expr_pat + ((#uint64)%expr @ $$x71)%expr_pat))%expr_pat in
+          expr_let x89 := ((#uint64)%expr @ (((#uint64)%expr @ $$x88)%expr_pat >> ##51))%expr_pat in
+          expr_let x90 := ((#uint64)%expr @ (((#uint64)%expr @ $$x88)%expr_pat &' ##2251799813685247))%expr_pat in
           expr_let x91 := ((#uint64)%expr @
-                           (((#uint64)%expr @ $x89)%expr_pat + ((#uint64)%expr @ $x75)%expr_pat))%expr_pat in
-          [((#uint64)%expr @ $x87)%expr_pat; ((#uint64)%expr @ $x90)%expr_pat;
-          ((#uint64)%expr @ $x91)%expr_pat; ((#uint64)%expr @ $x79)%expr_pat;
-          ((#uint64)%expr @ $x83)%expr_pat])
+                           (((#uint64)%expr @ $$x89)%expr_pat + ((#uint64)%expr @ $$x75)%expr_pat))%expr_pat in
+          [((#uint64)%expr @ $$x87)%expr_pat; ((#uint64)%expr @ $$x90)%expr_pat;
+          ((#uint64)%expr @ $$x91)%expr_pat; ((#uint64)%expr @ $$x79)%expr_pat;
+          ((#uint64)%expr @ $$x83)%expr_pat])
      : Pipeline.ErrorT
          (Expr
             (type.base (base.type.list (base.type.type_base base.type.Z)) ->
@@ -761,20 +3758,13 @@ Module debugging_remove_mul_split2.
     Let c := s - m.
     Let n : nat := Eval compute in Z.to_nat (Qceiling (Z.log2_up s / machine_wordsize)).
     Let r := 2^machine_wordsize.
-    Let r' := match Z.modinv r m with
-              | Some r' => r'
-              | None => 0
-              end.
-    Let m' := Eval vm_compute in
-          match Z.modinv (-m) r with
-          | Some m' => m'
-          | None => 0
-          end.
+    Let r' := Z.modinv r m.
+    Let m' := Eval vm_compute in Z.modinv (-m) r.
 
     Local Notation saturated_bounds := (Primitives.saturated_bounds n machine_wordsize).
 
     Definition bounds : list (ZRange.type.option.interp base.type.Z)
-      := Option.invert_Some saturated_bounds (*List.map (fun u => Some r[0~>u]%zrange) upperbounds*).
+      := saturated_bounds (*List.map (fun u => Some r[0~>u]%zrange) upperbounds*).
 
     Definition possible_values_of_machine_wordsize
       := prefix_with_carry [machine_wordsize; 2 * machine_wordsize]%Z.
@@ -796,6 +3786,7 @@ Module debugging_remove_mul_split2.
       "" (* prefix *)
       "mul"
       false (* subst01 *)
+      false (* inline *)
       None
       None (* fancy *)
       possible_values
@@ -817,8 +3808,8 @@ Module debugging_remove_mul_split2.
       cbv [mul] in k.
       Import WordByWordMontgomeryReificationCache.
       cbv -[Pipeline.BoundsPipeline reified_mul_gen] in k.
-      cbv [Pipeline.BoundsPipeline LetIn.Let_In] in k.
-      set (v := CheckedPartialEvaluateWithBounds _ _ _ _) in (value of k).
+      cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline LetIn.Let_In] in k.
+      set (v := CheckedPartialEvaluateWithBounds _ _ _ _ _ _ _) in (value of k).
       Notation INL := (inl _).
       vm_compute in v.
       Notation IDD := (id _).
@@ -826,14 +3817,21 @@ Module debugging_remove_mul_split2.
       | @inl ?A ?B ?x => pose (id x) as v'; change v with (@inl A B v') in (value of k); clear v
       end.
       cbv beta iota in k.
-      set (v := Pipeline.RewriteAndEliminateDeadAndInline _ _ _ _) in (value of k).
-      set (v'' := MulSplit.Compilers.RewriteRules.RewriteMulSplit _ _ _) in (value of k).
+      set (v := Pipeline.RewriteAndEliminateDeadAndInline _ _ _ _ _) in (value of k) at 1.
+      vm_compute in v; clear v';
+      lazymatch (eval cbv [v] in v) with
+      | ?x => pose (id x) as v'; change v with v' in (value of k); clear v
+      end.
+      cbv beta iota in k.
+      (*
+      set (v'' := MulSplit.Compilers.RewriteRules.RewriteMulSplit _ _ _ _) in (value of k).
       vm_compute in v; clear v';
       lazymatch (eval cbv [v] in v) with
       | ?x => pose (id x) as v'; change v with v' in (value of v''); clear v
       end.
       cbv [id] in v'.
       vm_compute in v''.
+       *)
     Abort.
   End __.
 End debugging_remove_mul_split2.
@@ -857,7 +3855,7 @@ Module debugging_rewriting.
 
 
     Let prime_upperbound_list : list Z
-      := encode_no_reduce (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
+      := Partition.partition (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
     Let tight_upperbounds : list Z
       := List.map
            (fun v : Z => Qceiling (11/10 * v))
@@ -933,7 +3931,7 @@ Module debugging_rewriting.
   Goal True.
     pose foo as X; cbv [foo] in X.
     clear -X.
-    cbv [Pipeline.BoundsPipeline LetIn.Let_In] in X.
+    cbv [Pipeline.BoundsPipeline Pipeline.PreBoundsPipeline LetIn.Let_In] in X.
     set (Y := (PartialEvaluateWithListInfoFromBounds _ _)) in (value of X).
     vm_compute in Y.
     subst Y; set (Y := (Rewriter.Compilers.PartialEvaluate _)) in (value of X).
@@ -964,7 +3962,7 @@ Section debugging_p448.
 
 
   Let prime_upperbound_list : list Z
-    := encode_no_reduce (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
+    := Partition.partition (weight (Qnum limbwidth) (Qden limbwidth)) n (s-1).
   Let tight_upperbounds : list Z
     := List.map
          (fun v : Z => Qceiling (11/10 * v))
@@ -996,13 +3994,17 @@ Section debugging_p448.
        "" (* prefix *)
        "mul"
        false (* subst01 *)
+       false (* inline *)
        None (* fancy *)
-       possible_values
+       possible_values machine_wordsize
        ltac:(let r := Reify ((carry_mulmod limbwidth_num limbwidth_den s c n [3; 7; 4; 0; 5; 1; 6; 2; 7; 3; 4; 0]%nat)) in
              exact r)
               (fun _ _ => []) (* comment *)
               (Some loose_bounds, (Some loose_bounds, tt))
-              (Some tight_bounds).
+              (Some tight_bounds)
+              (None, (None, tt))
+              None
+    : Pipeline.ErrorT _.
 
   Time Redirect "log" Compute
        Pipeline.BoundsPipeline

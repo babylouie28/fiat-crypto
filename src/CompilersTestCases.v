@@ -1,3 +1,4 @@
+Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List.
 Require Import Crypto.Util.ZRange.
@@ -21,6 +22,8 @@ Import Language.API.Compilers.
 Local Coercion Z.of_nat : nat >-> Z.
 Import Compilers.API.
 
+Local Existing Instance AbstractInterpretation.default_Options.
+
 Local Notation "x + y"
   := ((#ident.Z_add @ x @ y)%expr)
      : expr_scope.
@@ -36,7 +39,7 @@ Proof.
   let v := Reify ((fun x => 2^x) 255)%Z in
   pose v as E.
   vm_compute in E.
-  pose (PartialEvaluate E) as E'.
+  pose (PartialEvaluate RewriteRules.default_opts E) as E'.
   vm_compute in E'.
   lazymatch (eval cbv delta [E'] in E') with
   | (fun var => expr.Ident (ident.Literal ?v)) => idtac
@@ -47,22 +50,22 @@ Module testrewrite.
   Import expr.
   Import ident.
 
-  Redirect "log" Eval compute in RewriteRules.RewriteNBE (fun var =>
-                          (#ident.fst @ (expr_let x := ##10 in ($x, $x)))%expr).
+  Redirect "log" Eval compute in RewriteRules.RewriteNBE RewriteRules.default_opts (fun var =>
+                          (#ident.fst @ (expr_let x := ##10 in ($$x, $$x)))%expr).
 
   Notation "x + y" := (@expr.Ident base.type ident _ _ ident.Z_add @ x @ y)%expr : expr_scope.
 
-  Redirect "log" Eval compute in RewriteRules.RewriteNBE (fun var =>
-                          ((\ x , expr_let y := ##5 in #ident.fst @ $x + (#ident.fst @ $x + ($y + $y)))
+  Redirect "log" Eval compute in RewriteRules.RewriteNBE RewriteRules.default_opts (fun var =>
+                          ((\ x , expr_let y := ##5 in #ident.fst @ $$x + (#ident.fst @ $$x + ($$y + $$y)))
                              @ (##1, ##1))%expr).
 
-  Redirect "log" Eval compute in RewriteRules.RewriteNBE (fun var =>
-                          ((\ x , expr_let y := ##5 in $y + ($y + (#ident.fst @ $x + #ident.snd @ $x)))
+  Redirect "log" Eval compute in RewriteRules.RewriteNBE RewriteRules.default_opts (fun var =>
+                          ((\ x , expr_let y := ##5 in $$y + ($$y + (#ident.fst @ $$x + #ident.snd @ $$x)))
                              @ (##1, ##7))%expr).
 
-  Redirect "log" Eval cbv in partial.eval_with_bound partial.default_relax_zrange
-                                      (RewriteRules.RewriteNBE (fun var =>
-                (\z , ((\ x , expr_let y := ##5 in $y + ($z + (#ident.fst @ $x + #ident.snd @ $x)))
+  Redirect "log" Eval cbv in partial.eval_with_bound partial.default_relax_zrange false (@ident.is_comment) false
+                                      (RewriteRules.RewriteNBE RewriteRules.default_opts (fun var =>
+                (\z , ((\ x , expr_let y := ##5 in $$y + ($$z + (#ident.fst @ $$x + #ident.snd @ $$x)))
                          @ (##1, ##7)))%expr) _)
                 (Datatypes.Some r[0~>100]%zrange, Datatypes.tt).
 End testrewrite.
@@ -71,22 +74,23 @@ Module testpartial.
   Import ident.
 
   Redirect "log" Eval compute in partial.eval
-                          (#ident.fst @ (expr_let x := ##10 in ($x, $x)))%expr.
+                          (#ident.fst @ (expr_let x := ##10 in ($$x, $$x)))%expr.
 
   Notation "x + y" := (@expr.Ident base.type ident _ _ (ident.Z_add) @ x @ y)%expr : expr_scope.
 
   Redirect "log" Eval compute in partial.eval
-                          ((\ x , expr_let y := ##5 in #ident.fst @ $x + (#ident.fst @ $x + ($y + $y)))
+                          ((\ x , expr_let y := ##5 in #ident.fst @ $$x + (#ident.fst @ $$x + ($$y + $$y)))
                              @ (##1, ##1))%expr.
 
   Redirect "log" Eval compute in partial.eval
-                          ((\ x , expr_let y := ##5 in $y + ($y + (#ident.fst @ $x + #ident.snd @ $x)))
+                          ((\ x , expr_let y := ##5 in $$y + ($$y + (#ident.fst @ $$x + #ident.snd @ $$x)))
                              @ (##1, ##7))%expr.
 
 
   Redirect "log" Eval cbv in partial.eval_with_bound
                 partial.default_relax_zrange
-                (\z , ((\ x , expr_let y := ##5 in $y + ($z + (#ident.fst @ $x + #ident.snd @ $x)))
+                false (@ident.is_comment) false
+                (\z , ((\ x , expr_let y := ##5 in $$y + ($$z + (#ident.fst @ $$x + #ident.snd @ $$x)))
                          @ (##1, ##7)))%expr
                 (Datatypes.Some r[0~>100]%zrange, Datatypes.tt).
 End testpartial.
@@ -107,18 +111,18 @@ Module test2.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var : type -> Type =>
          (λ x : var _,
-                expr_let x0 := ($x * $x) in
-              expr_let x1 := ($x0 * $x0) in
-              ($x1, $x1))%expr) => idtac
+                expr_let x0 := ($$x * $$x) in
+              expr_let x1 := ($$x0 * $$x0) in
+              ($$x1, $$x1))%expr) => idtac
     end.
-    pose (partial.EvalWithBound partial.default_relax_zrange E' (Some r[0~>10]%zrange, tt)) as E''.
+    pose (partial.EvalWithBound partial.default_relax_zrange false (@ident.is_comment) false E' (Some r[0~>10]%zrange, tt)) as E''.
     lazy in E''.
      lazymatch (eval cbv delta [E''] in E'') with
      | (fun var : type -> Type =>
           (λ x : var _,
-                 expr_let y := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $x) * ((cstZ r[0 ~> 10]) @ $x)) in
-               expr_let y0 := (cstZ r[0 ~> 10000]) @ (((cstZ r[0 ~> 100]) @ $y) * ((cstZ r[0 ~> 100]) @ $y)) in
-               ((cstZ r[0 ~> 10000]) @ $y0, (cstZ r[0 ~> 10000]) @ $y0))%expr)
+                 expr_let y := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $$x) * ((cstZ r[0 ~> 10]) @ $$x)) in
+               expr_let y0 := (cstZ r[0 ~> 10000]) @ (((cstZ r[0 ~> 100]) @ $$y) * ((cstZ r[0 ~> 100]) @ $$y)) in
+               ((cstZ r[0 ~> 10000]) @ $$y0, (cstZ r[0 ~> 10000]) @ $$y0))%expr)
       => idtac
     end.
     constructor.
@@ -140,23 +144,23 @@ Module test3.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var : type -> Type =>
          (λ x : var _,
-                expr_let x0 := $x * $x in
-              expr_let x1 := $x0 * $x0 in
-              expr_let x2 := $x1 * $x1 in
-              expr_let x3 := $x2 * $x2 in
-              $x3 * $x3)%expr)
+                expr_let x0 := $$x * $$x in
+              expr_let x1 := $$x0 * $$x0 in
+              expr_let x2 := $$x1 * $$x1 in
+              expr_let x3 := $$x2 * $$x2 in
+              $$x3 * $$x3)%expr)
       => idtac
     end.
-    pose (partial.EvalWithBound partial.default_relax_zrange E' (Some r[0~>10]%zrange, tt)) as E'''.
+    pose (partial.EvalWithBound partial.default_relax_zrange false (@ident.is_comment) false E' (Some r[0~>10]%zrange, tt)) as E'''.
     lazy in E'''.
     lazymatch (eval cbv delta [E'''] in E''') with
     | (fun var : type -> Type =>
           (λ x : var _,
-           expr_let y := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $x) * ((cstZ r[0 ~> 10]) @ $x)) in
-           expr_let y0 := (cstZ r[0 ~> 10000]) @ (((cstZ r[0 ~> 100]) @ $y) * ((cstZ r[0 ~> 100]) @ $y)) in
-           expr_let y1 := (cstZ r[0 ~> 100000000]) @ (((cstZ r[0 ~> 10000]) @ $y0) * ((cstZ r[0 ~> 10000]) @ $y0)) in
-           expr_let y2 := (cstZ r[0 ~> 10000000000000000]) @ (((cstZ r[0 ~> 100000000]) @ $y1) * ((cstZ r[0 ~> 100000000]) @ $y1)) in
-           (cstZ r[0 ~> 100000000000000000000000000000000]) @ (((cstZ r[0 ~> 10000000000000000]) @ $y2) * ((cstZ r[0 ~> 10000000000000000]) @ $y2)))%expr)
+           expr_let y := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $$x) * ((cstZ r[0 ~> 10]) @ $$x)) in
+           expr_let y0 := (cstZ r[0 ~> 10000]) @ (((cstZ r[0 ~> 100]) @ $$y) * ((cstZ r[0 ~> 100]) @ $$y)) in
+           expr_let y1 := (cstZ r[0 ~> 100000000]) @ (((cstZ r[0 ~> 10000]) @ $$y0) * ((cstZ r[0 ~> 10000]) @ $$y0)) in
+           expr_let y2 := (cstZ r[0 ~> 10000000000000000]) @ (((cstZ r[0 ~> 100000000]) @ $$y1) * ((cstZ r[0 ~> 100000000]) @ $$y1)) in
+           (cstZ r[0 ~> 100000000000000000000000000000000]) @ (((cstZ r[0 ~> 10000000000000000]) @ $$y2) * ((cstZ r[0 ~> 10000000000000000]) @ $$y2)))%expr)
       => idtac
     end.
     constructor.
@@ -168,13 +172,13 @@ Module test3point5.
     let v := Reify (fun y : (list Z) => List.nth_default (-1) y 0) in
     pose v as E.
     vm_compute in E.
-    pose (partial.EvalWithBound partial.default_relax_zrange E (Some [Some r[0~>10]%zrange], tt)) as E'.
+    pose (partial.EvalWithBound partial.default_relax_zrange false (@ident.is_comment) false E (Some [Some r[0~>10]%zrange], tt)) as E'.
     lazy in E'.
     clear E.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var : type -> Type =>
          (λ x : var _,
-          (cstZ r[0 ~> 10]) @ (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ $x @ #(ident.Literal 0%nat)))%expr)
+          (cstZ r[0 ~> 10]) @ (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ $$x @ #(ident.Literal 0%nat)))%expr)
       => idtac
     end.
     constructor.
@@ -197,20 +201,20 @@ Module test4.
     pose (partial.EtaExpandWithListInfoFromBound E' bound) as E''.
     lazy in E''.
     clear E'.
-    pose (PartialEvaluate E'') as E'''.
+    pose (PartialEvaluate RewriteRules.default_opts E'') as E'''.
     lazy in E'''.
-    pose (partial.EvalWithBound partial.default_relax_zrange E''' bound) as E''''.
+    pose (partial.EvalWithBound partial.default_relax_zrange false (@ident.is_comment) false E''' bound) as E''''.
     lazy in E''''.
     clear E'' E'''.
     lazymatch (eval cbv delta [E''''] in E'''') with
     | (fun var : type -> Type =>
          (λ x : var _,
           expr_let y := (cstZ r[0 ~> 10]) @
-                        (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ (#ident.fst @ $x) @ #(ident.Literal 0%nat)) in
+                        (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ (#ident.fst @ $$x) @ #(ident.Literal 0%nat)) in
           expr_let y0 := (cstZ r[0 ~> 10]) @
-                          (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ (#ident.snd @ $x) @ #(ident.Literal 0%nat)) in
-          expr_let y1 := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $y) * ((cstZ r[0 ~> 10]) @ $y0)) in
-          (cstZ r[0 ~> 100]) @ $y1 :: (cstZ r[0 ~> 100]) @ $y1 :: [])%expr)
+                          (#ident.List_nth_default @ #(ident.Literal (0)%Z) @ (#ident.snd @ $$x) @ #(ident.Literal 0%nat)) in
+          expr_let y1 := (cstZ r[0 ~> 100]) @ (((cstZ r[0 ~> 10]) @ $$y) * ((cstZ r[0 ~> 10]) @ $$y0)) in
+          (cstZ r[0 ~> 100]) @ $$y1 :: (cstZ r[0 ~> 100]) @ $$y1 :: [])%expr)
       => idtac
     end.
     constructor.
@@ -224,14 +228,14 @@ Module test5.
                         x) in
     pose v as E.
     vm_compute in E.
-    pose (RewriteRules.RewriteArith (2^8) (partial.Eval E)) as E'.
+    pose (RewriteRules.RewriteArith (2^8) RewriteRules.default_opts (partial.Eval E)) as E'.
     lazy in E'.
     clear E.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var =>
          expr.Abs (fun v
-              => (expr_let v0 := (#ident.Z_mul @ (#ident.fst @ $v) @ (#ident.Z_mul @ (#ident.snd @ $v) @ #(ident.Literal 13))) in
-                      $v0)%expr))
+              => (expr_let v0 := (#ident.Z_mul @ (#ident.fst @ $$v) @ (#ident.Z_mul @ (#ident.snd @ $$v) @ #(ident.Literal 13))) in
+                      $$v0)%expr))
       => idtac
     end.
     constructor.
@@ -244,14 +248,14 @@ Module test5.
                         x) in
     pose v as E.
     vm_compute in E.
-    pose (RewriteRules.RewriteArith (2^8) (partial.Eval E)) as E'.
+    pose (RewriteRules.RewriteArith (2^8) RewriteRules.default_opts (partial.Eval E)) as E'.
     lazy in E'.
     clear E.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var =>
          expr.Abs (fun v
-              => (expr_let v0 := (#ident.Z_mul @ (#ident.fst @ $v) @ (#ident.Z_mul @ (#ident.snd @ $v) @ (#ident.Z_mul @ #(ident.Literal 2) @ #(ident.Literal 19)))) in
-                      $v0)%expr))
+              => (expr_let v0 := (#ident.Z_mul @ (#ident.fst @ $$v) @ (#ident.Z_mul @ (#ident.snd @ $$v) @ (#ident.Z_mul @ #(ident.Literal 2) @ #(ident.Literal 19)))) in
+                      $$v0)%expr))
       => idtac
     end.
     constructor.
@@ -268,10 +272,10 @@ Module test6.
                        else y) in
     pose v as E.
     vm_compute in E.
-    pose (PartialEvaluate E) as E''.
+    pose (PartialEvaluate RewriteRules.default_opts E) as E''.
     lazy in E''.
     lazymatch eval cbv delta [E''] in E'' with
-    | fun var : type -> Type => (λ x : var _, $x)%expr
+    | fun var : type -> Type => (λ x : var _, $$x)%expr
       => idtac
     end.
     exact I.
@@ -288,10 +292,10 @@ Module test7.
                         z'' + z'') in
     pose v as E.
     vm_compute in E.
-    pose (Subst01.Subst01 (DeadCodeElimination.EliminateDead E)) as E''.
+    pose (Subst01.Subst01 ident.is_comment (DeadCodeElimination.EliminateDead ident.is_comment E)) as E''.
     lazy in E''.
     lazymatch eval cbv delta [E''] in E'' with
-    | fun var : type -> Type => (λ x : var _, expr_let v0 := $x + $x in $v0 + $v0)%expr
+    | fun var : type -> Type => (λ x : var _, expr_let v0 := $$x + $$x in $$v0 + $$v0)%expr
       => idtac
     end.
     exact I.
@@ -320,7 +324,7 @@ Module test9.
     let v := Reify (fun y : list Z => (hd 0%Z y, tl y)) in
     pose v as E.
     vm_compute in E.
-    pose (PartialEvaluate E) as E'.
+    pose (PartialEvaluate RewriteRules.default_opts E) as E'.
     lazy in E'.
     clear E.
     lazymatch (eval cbv delta [E'] in E') with
@@ -328,12 +332,12 @@ Module test9.
        => (λ x,
            (#ident.list_case
               @ (λ _, #(ident.Literal 0%Z))
-              @ (λ x0 _, $x0)
-              @ $x,
+              @ (λ x0 _, $$x0)
+              @ $$x,
             #ident.list_case
               @ (λ _, #ident.nil)
-              @ (λ _ x1, $x1)
-              @ $x))%expr)
+              @ (λ _ x1, $$x1)
+              @ $$x))%expr)
       => idtac
     end.
     exact I.
@@ -352,9 +356,9 @@ Module test10.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var =>
          (λ v,
-          ident.fst @@ $v @
-                    (ident.fst @@ (ident.snd @@ $v) + ident.snd @@ (ident.snd @@ $v)) @
-                    (ident.fst @@ (ident.snd @@ $v) * ident.snd @@ (ident.snd @@ $v)))%expr)
+          ident.fst @@@ $$v @
+                    (ident.fst @@@ (ident.snd @@@ $$v) + ident.snd @@@ (ident.snd @@@ $$v)) @
+                    (ident.fst @@@ (ident.snd @@@ $$v) * ident.snd @@@ (ident.snd @@@ $$v)))%expr)
       => idtac
     end.
     constructor.
@@ -374,7 +378,7 @@ Module test11.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var =>
          (λ x,
-          ident.fst @@ $x + ident.snd @@ $x + ident.fst @@ $x * ident.snd @@ $x)%expr)
+          ident.fst @@@ $$x + ident.snd @@@ $$x + ident.fst @@@ $$x * ident.snd @@@ $$x)%expr)
       => idtac
     end.
     constructor.
@@ -388,12 +392,12 @@ Module test12.
     pose v as E.
     vm_compute in E.
     pose (Some (repeat (@None zrange) 3), Datatypes.tt) as bound.
-    pose (PartialEvaluate (partial.EtaExpandWithListInfoFromBound E bound)) as E'.
+    pose (PartialEvaluate RewriteRules.default_opts (partial.EtaExpandWithListInfoFromBound E bound)) as E'.
     lazy in E'.
     clear E.
     lazymatch (eval cbv delta [E'] in E') with
     | (fun var
-       => (λ x, [ [ $x[[0]] ; $x[[1]]; $x[[2]] ] ; [ $x[[0]] ; $x[[1]]; $x[[2]] ] ])%expr)
+       => (λ x, [ [ $$x[[0]] ; $$x[[1]]; $$x[[2]] ] ; [ $$x[[0]] ; $$x[[1]]; $$x[[2]] ] ])%expr)
       => idtac
     end.
     exact I.
@@ -408,7 +412,7 @@ Module test13.
       pose v0 as exp.
     vm_compute in E.
     vm_compute in exp.
-    pose (PartialEvaluate E) as E'.
+    pose (PartialEvaluate RewriteRules.default_opts E) as E'.
     vm_compute in E'.
     clear E.
     let r := Reify exp in
@@ -416,3 +420,46 @@ Module test13.
     exact I.
   Qed.
 End test13.
+Module test14.
+  Import PreExtra.
+  Local Open Scope string_scope.
+  Example test14 : True.
+  Proof.
+    let v := Reify (fun y : Z
+                    => dlet_nd x := y + y in
+                        dlet_nd z := y + y in
+                        dlet_nd w := y + y in
+                        dlet_nd v := y + y in
+                        dlet_nd __ := ident.comment ("note", (x, x, z, z)) in
+                        dlet_nd __ := ident.comment_no_keep ("note", (w, w, v, v)) in
+                        y) in
+    pose v as E.
+    vm_compute in E.
+    pose (Subst01.Subst01 ident.is_comment (DeadCodeElimination.EliminateDead ident.is_comment E)) as E''.
+    lazy in E''.
+    pose (PartialEvaluate RewriteRules.default_opts E'') as E'''.
+    vm_compute in E'''.
+    pose (partial.EvalWithBound partial.default_relax_zrange false (@ident.is_comment) true E''' (Some r[0~>1]%zrange, tt)) as E''''.
+    lazy in E''''.
+    unify E E''.
+    unify E'' E'''.
+    lazymatch (eval cbv [E''''] in E'''') with
+    | fun var : type -> Type =>
+        (λ x : var (type.base (base.type.type_base Compilers.Z)),
+               expr_let v := cstZ r[0 ~> 2] @
+                                  (cstZ r[0 ~> 1] @ $$x + cstZ r[0 ~> 1] @ $$x) in
+             expr_let v0 := cstZ r[0 ~> 2] @
+                                 (cstZ r[0 ~> 1] @ $$x + cstZ r[0 ~> 1] @ $$x) in
+             expr_let v1 := cstZ r[0 ~> 2] @
+                                 (cstZ r[0 ~> 1] @ $$x + cstZ r[0 ~> 1] @ $$x) in
+             expr_let v2 := cstZ r[0 ~> 2] @
+                                 (cstZ r[0 ~> 1] @ $$x + cstZ r[0 ~> 1] @ $$x) in
+             expr_let _ := #Compilers.ident_comment @ (###_, ($$v, $$v, $$v0, $$v0)) in
+             expr_let _ := #Compilers.ident_comment_no_keep @
+                            (###_, ($$v1, $$v1, $$v2, $$v2)) in
+             cstZ r[0 ~> 1] @ $$x)%expr
+      => idtac
+    end.
+    exact I.
+  Qed.
+End test14.

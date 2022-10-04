@@ -2,7 +2,7 @@
 (** This file implements the proofs for Montgomery Form, Montgomery
     Reduction, and Montgomery Multiplication on [Z].  We follow
     Wikipedia. *)
-Require Import Coq.ZArith.ZArith Coq.micromega.Psatz Coq.Structures.Equalities.
+Require Import Coq.ZArith.ZArith Coq.micromega.Lia Coq.Structures.Equalities.
 Require Import Crypto.Arithmetic.MontgomeryReduction.Definition.
 Require Import Crypto.Util.ZUtil.EquivModulo.
 Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
@@ -248,7 +248,7 @@ Section montgomery.
         Lemma reduce_via_partial_alt_eq : reduce_via_partial_alt N R N' T = reduce_via_partial N R N' T.
         Proof.
             cbv [reduce_via_partial_alt reduce_via_partial].
-            rewrite partial_reduce_alt_eq by omega. reflexivity.
+            rewrite partial_reduce_alt_eq by lia. reflexivity.
         Qed.
       End alt.
     End redc.

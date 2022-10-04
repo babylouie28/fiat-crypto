@@ -107,6 +107,14 @@ Module ZRange.
   Definition apply_to_each_split_range_under_args {A} {n} (f : BinInt.Z -> nary_T A zrange n) (v : zrange) : nary_T A zrange n
     := apply_to_split_range_under_args (apply_to_range_under_args f) v.
 
+  Fixpoint nary_is_bounded_by {n : nat} : nary_T Z Z n -> nary_T zrange zrange n -> Prop
+    := match n return nary_T Z Z n -> nary_T zrange zrange n -> Prop with
+       | O => fun z r => is_bounded_by_bool z r = true
+       | S n
+         => fun (f : Z -> nary_T Z Z n) (fb : zrange -> nary_T zrange zrange n)
+            => forall z r, is_bounded_by_bool z r = true -> nary_is_bounded_by (f z) (fb r)
+       end.
+
   Fixpoint n_corners {n : nat} : nary_T Z Z n -> nary_T zrange zrange n
     := match n with
        | O => constant
@@ -123,6 +131,14 @@ Module ZRange.
             => apply_to_each_split_range_under_args (fun x => n_corners_and_zero (f x)) v
        end.
 
+  Fixpoint apply_to_n_split_range {n : nat} : nary_T zrange zrange n -> nary_T zrange zrange n
+    := match n with
+       | O => fun x => x
+       | S n
+         => fun (f : zrange -> nary_T zrange zrange n) (v : zrange)
+            => apply_to_n_split_range (apply_to_split_range_under_args f v)
+       end.
+
   Definition two_corners (f : Z -> Z) (v : zrange) : zrange
     := apply_to_range (fun x => constant (f x)) v.
   Definition four_corners (f : Z -> Z -> Z) (x y : zrange) : zrange
@@ -136,6 +152,11 @@ Module ZRange.
     := apply_to_split_range (apply_to_range (fun x => two_corners_and_zero (f x) y)) x.
   Definition eight_corners_and_zero (f : Z -> Z -> Z -> Z) (x y z : zrange) : zrange
     := apply_to_split_range (apply_to_range (fun x => four_corners_and_zero (f x) y z)) x.
+
+  Definition split_range_one (f : zrange -> zrange) : zrange -> zrange
+    := apply_to_n_split_range (n := 1) f.
+  Definition split_range_two (f : zrange -> zrange -> zrange) : zrange -> zrange -> zrange
+    := apply_to_n_split_range (n := 2) f.
 
   Definition two_corners' (f : Z -> Z) (v : zrange) : zrange
     := normalize' (map f v).
@@ -154,8 +175,29 @@ Module ZRange.
   Definition land_lor_bounds (f : BinInt.Z -> BinInt.Z -> BinInt.Z) (x y : zrange) : zrange
     := four_corners_and_zero (fun x y => f (Z.round_lor_land_bound x) (Z.round_lor_land_bound y))
                              (extend_land_lor_bounds x) (extend_land_lor_bounds y).
-  Definition land_bounds : zrange -> zrange -> zrange := land_lor_bounds Z.land.
   Definition lor_bounds : zrange -> zrange -> zrange := land_lor_bounds Z.lor.
+
+  (* N.B. the bounds here for negative numbers are fairly loose *)
+  Definition land_bounds (x y : zrange) : zrange
+    :=
+      let low := if ((lower x <? 0) && (lower y <? 0))%bool
+                 then
+                   let logx := Z.log2_up (-lower x) in
+                   let logy := Z.log2_up (-lower y) in
+                   - 2 ^ (Z.max logx logy)
+                 else 0 in
+      let high := if ((0 <=? lower x)%Z && (0 <=? lower y)%Z)%bool
+                  then (* both arguments must be positive *)
+                    if ((0 <=? upper x)%Z && (0 <=? upper y)%Z)%bool
+                    then Z.min (upper x) (upper y)
+                    else (* only get here if upper < lower *)
+                      Z.max (Z.max (lower x) (upper x))
+                            (Z.max (lower y) (upper y))
+                  else if ((upper x <? 0) && (upper y <? 0))%bool
+                       then 0 (* both arguments must be negative *)
+                       else Z.max (upper x) (upper y) in
+      r[low~>high].
+
 
   Definition split_bounds_pos (r : zrange) (split_at : BinInt.Z) : zrange * zrange :=
     if upper r <? split_at
@@ -169,7 +211,7 @@ Module ZRange.
     if (0 <? split_at)%Z
     then split_bounds_pos r split_at
     else if (split_at =? 0)%Z
-         then ({| lower := 0; upper := 0 |}, {| lower := 0 ; upper := 0 |})
+         then (ltac:(match eval hnf in (1 mod 0) with | 0 => exact {| lower := 0; upper := 0 |} | _ => exact r end), {| lower := 0; upper := 0 |})
          else let '(q, r) := split_bounds_pos (opp r) (-split_at) in
               (opp q, r).
 
@@ -177,6 +219,8 @@ Module ZRange.
     := lower r <= upper r.
   Definition goodb (r : zrange) : bool
     := (lower r <=? upper r)%Z.
+  Definition covers (rs : list zrange) (r : zrange)
+    := forall z, is_bounded_by_bool z r = true -> exists r', is_bounded_by_bool z r' = true /\ List.In r' rs.
 
   Notation log2 := (ZRange.two_corners Z.log2).
   Notation log2_up := (ZRange.two_corners Z.log2_up).

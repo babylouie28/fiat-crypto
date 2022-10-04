@@ -1,5 +1,5 @@
 Require Coq.ZArith.Zpower Coq.ZArith.Znumtheory Coq.ZArith.ZArith Coq.ZArith.Zdiv.
-Require Coq.omega.Omega Coq.micromega.Psatz Coq.Numbers.Natural.Peano.NPeano Coq.Arith.Arith.
+Require Coq.micromega.Lia Coq.Numbers.Natural.Peano.NPeano Coq.Arith.Arith.
 Require Crypto.Util.ZUtil.AddGetCarry.
 Require Crypto.Util.ZUtil.AddModulo.
 Require Crypto.Util.ZUtil.CC.
@@ -19,6 +19,7 @@ Require Crypto.Util.ZUtil.Hints.Ztestbit.
 Require Crypto.Util.ZUtil.Land.
 Require Crypto.Util.ZUtil.LandLorBounds.
 Require Crypto.Util.ZUtil.LandLorShiftBounds.
+Require Crypto.Util.ZUtil.Lor.
 Require Crypto.Util.ZUtil.Le.
 Require Crypto.Util.ZUtil.Lnot.
 Require Crypto.Util.ZUtil.Log2.

@@ -19,21 +19,28 @@ Module Compilers.
     Section __.
       Context (max_const_val : Z).
 
-      Definition VerifiedRewriterArith : VerifiedRewriter_with_args false (arith_rewrite_rules_proofs max_const_val).
+      Definition VerifiedRewriterArith : VerifiedRewriter_with_args false false true (arith_rewrite_rules_proofs max_const_val).
       Proof using All. make_rewriter. Defined.
 
-      Definition RewriteArith {t} := Eval hnf in @Rewrite VerifiedRewriterArith t.
+      Definition default_opts := Eval hnf in @default_opts VerifiedRewriterArith.
+      Let optsT := Eval hnf in optsT VerifiedRewriterArith.
 
-      Lemma Wf_RewriteArith {t} e (Hwf : Wf e) : Wf (@RewriteArith t e).
+      Definition RewriteArith (opts : optsT) {t : API.type} := Eval hnf in @Rewrite VerifiedRewriterArith opts t.
+
+      Lemma Wf_RewriteArith opts {t} e (Hwf : Wf e) : Wf (@RewriteArith opts t e).
       Proof. now apply VerifiedRewriterArith. Qed.
 
-      Lemma Interp_RewriteArith {t} e (Hwf : Wf e) : API.Interp (@RewriteArith t e) == API.Interp e.
+      Lemma Interp_RewriteArith opts {t} e (Hwf : Wf e) : API.Interp (@RewriteArith opts t e) == API.Interp e.
       Proof. now apply VerifiedRewriterArith. Qed.
     End __.
   End RewriteRules.
 
   Module Export Hints.
+#[global]
     Hint Resolve Wf_RewriteArith : wf wf_extra.
+#[global]
+    Hint Opaque RewriteArith : wf wf_extra interp interp_extra rewrite.
+#[global]
     Hint Rewrite @Interp_RewriteArith : interp interp_extra.
   End Hints.
 End Compilers.

@@ -8,7 +8,7 @@
     does reduction modulo [b^(k+offset)] early (ensuring that we don't
     have to carry around extra precision), but requires more stringint
     conditions on the base ([b]), exponent ([k]), and the [offset]. *)
-Require Import Coq.ZArith.ZArith Coq.micromega.Psatz.
+Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.ZUtil.Tactics.LtbToLt.
 Require Import Crypto.Util.ZUtil.Tactics.ZeroBounds.
@@ -105,6 +105,7 @@ Section barrett.
             true quotient [Q], and is at most 2 smaller. *)
     Lemma x_minus_q3_m_in_range : 0 <= x - q3 * m < 3 * m.
     Proof using base_pos k_big_enough m_large m_pos m_small offset_nonneg q2 x_nonneg x_small μ_good.
+      clear k_good.
       pose proof q3_in_range.
       assert (0 <= R < m) by (subst R; auto with zarith).
       assert (0 <= (Q - q3) * m + R < 3 * m) by nia.

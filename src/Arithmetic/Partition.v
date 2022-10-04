@@ -1,3 +1,4 @@
+Require Import Coq.micromega.Lia.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List.
 Require Import Coq.Structures.Orders.
@@ -38,7 +39,7 @@ Section PartitionProofs.
     { rewrite (Z.div_mod (x mod weight (S n)) (weight n)) by auto with zarith.
       rewrite <-Znumtheory.Zmod_div_mod by (try apply Z.mod_divide; auto with zarith).
       rewrite partition_step, Positional.eval_snoc with (n:=n) by distr_length.
-      omega. }
+      lia. }
   Qed.
 
   Lemma partition_Proper n :
@@ -62,15 +63,23 @@ Section PartitionProofs.
   Lemma partition_eq_mod x y n :
     x mod weight n = y mod weight n ->
     partition n x = partition n y.
-  Proof. apply partition_Proper. Qed.
+  Proof using wprops. apply partition_Proper. Qed.
 
   Lemma nth_default_partition d n x i :
     (i < n)%nat ->
     nth_default d (partition n x) i = x mod weight (S i) / weight i.
-  Proof.
+  Proof using Type.
     cbv [partition]; intros.
     rewrite map_nth_default with (x:=0%nat) by distr_length.
     autorewrite with push_nth_default natsimplify. reflexivity.
+  Qed.
+
+  Lemma nth_default_partition_full d n x i :
+    nth_default d (partition n x) i = if lt_dec i n then x mod weight (S i) / weight i else d.
+  Proof using Type.
+    break_innermost_match;
+      try now rewrite nth_default_out_of_bounds by distr_length.
+    now rewrite nth_default_partition by lia.
   Qed.
 
   Fixpoint recursive_partition n i x :=
@@ -88,7 +97,7 @@ Section PartitionProofs.
     pose proof (@weight_divides _ wprops j).
     f_equal;
       repeat match goal with
-             | _ => rewrite Z.mod_pull_div by auto with zarith 
+             | _ => rewrite Z.mod_pull_div by auto with zarith
              | _ => rewrite weight_multiples by auto with zarith
              | _ => progress autorewrite with zsimplify_fast zdiv_to_mod pull_Zdiv
              | _ => reflexivity
@@ -116,7 +125,7 @@ Section PartitionProofs.
   Proof using Type.
     cbv [Positional.drop_high_to_length partition]; intros.
     autorewrite with push_firstn.
-    rewrite Nat.min_l by omega.
+    rewrite Nat.min_l by lia.
     reflexivity.
   Qed.
 
@@ -129,5 +138,9 @@ Section PartitionProofs.
   Qed.
 
 End PartitionProofs.
+#[global]
 Hint Rewrite length_partition length_recursive_partition : distr_length.
+#[global]
 Hint Rewrite eval_partition using (solve [auto; distr_length]) : push_eval.
+#[global]
+Hint Rewrite nth_default_partition_full : push_nth_default.

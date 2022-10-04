@@ -5,7 +5,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Crypto.COperationSpecifications. Import COperationSpecifications.BarrettReduction.
 Require Import Rewriter.Language.Language. Import Language.Compilers.
 Require Import Crypto.Language.API. Import Language.API.Compilers.
-Require Import Rewriter.Language.Wf.
+Require Import Rewriter.Language.Wf. Import Language.Wf.Compilers.
 Require Import Crypto.PushButtonSynthesis.BarrettReduction.
 Require Import Crypto.Fancy.Compiler.
 Require Import Crypto.Fancy.Prod.
@@ -26,10 +26,13 @@ Module Barrett256.
          As barrett_red256_eq.
   Proof. lazy; reflexivity. Qed.
 
+  Lemma Wf_barrett_red256 : API.Wf barrett_red256.
+  Proof using Type. eapply Wf_barrett_red, barrett_red256_eq. Qed.
+
   Lemma barrett_red256_correct :
     COperationSpecifications.BarrettReduction.barrett_red_correct machine_wordsize M (API.Interp barrett_red256).
   Proof.
-    apply barrett_red_correct with (machine_wordsize:=machine_wordsize).
+    apply barrett_red_correct with (machine_wordsize:=machine_wordsize) (requests:=[]).
     { lazy. reflexivity. }
     { apply barrett_red256_eq. }
   Qed.
@@ -53,14 +56,13 @@ Module Barrett256.
   Qed.
 
   Local Ltac wf_subgoal :=
-    repeat match goal with
-           | _ => progress cbn [fst snd]
-           | |- Language.Wf.Compilers.expr.wf _ _ _ =>
-             econstructor; try solve [econstructor]; [ ]
-           | |- Language.Wf.Compilers.expr.wf _ _ _ =>
-             solve [econstructor]
-           | |- In _ _ => auto 50 using in_eq, in_cons
-           end.
+    repeat first [ progress cbn [List.In type.and_for_each_lhs_of_arrow fst snd List.app List.map]
+                 | apply expr.wf_smart_App_curried
+                 | progress intros
+                 | exfalso; assumption
+                 | apply conj
+                 | exact I
+                 | solve [ eauto 50 using or_introl, or_intror, eq_refl with nocore ] ].
   Local Ltac valid_expr_subgoal :=
     repeat match goal with
            | _ => progress intros
@@ -109,18 +111,15 @@ Module Barrett256.
       match goal with |- context [_ mod ?m] => change m with (2 ^ machine_wordsize) end.
       assert (M < 2 ^ machine_wordsize) by (cbv; congruence).
       assert (0 <= muLow < 2 ^ machine_wordsize) by (split; cbv; congruence).
-      intuition; Prod.inversion_prod; subst; apply Z.mod_small; omega. }
+      intuition; Prod.inversion_prod; subst; apply Z.mod_small; lia. }
     { cbn; intros; subst RegZero RegMod RegMuLow RegxHigh RegxLow.
       match goal with |- context [_ mod ?m] => change m with (2 ^ machine_wordsize) end.
       assert (M < 2 ^ machine_wordsize) by (cbv; congruence).
       assert (0 <= muLow < 2 ^ machine_wordsize) by (split; cbv; congruence).
-      intuition; Prod.inversion_prod; subst; apply Z.mod_small; omega. }
-    { cbn.
-      repeat match goal with
-             | _ => apply Compilers.expr.WfLetIn
-             | _ => progress wf_subgoal
-             | _ => econstructor
-             end. }
+      intuition; Prod.inversion_prod; subst; apply Z.mod_small; lia. }
+    { repeat first [ eapply expr.wf_Proper_list, Wf_barrett_red256
+                   | progress cbv [make_pairs consts_list arg_list]
+                   | wf_subgoal ]. }
     { cbn. cbv [muLow M].
       repeat (match goal with
              | _ => eapply valid_LetInZZ
@@ -225,13 +224,13 @@ Module Barrett256.
              interp (Prod.MulMod x xHigh RegMuLow scratchp1 scratchp2 scratchp3 scratchp4 scratchp5) cc_start_state start_context = X mod M.
   Proof.
     intros. subst X.
-    assert (0 <= start_context xHigh < 2^machine_wordsize) by (cbv [M] in *; cbn; omega).
+    assert (0 <= start_context xHigh < 2^machine_wordsize) by (cbv [M] in *; cbn; lia).
     let r := (eval compute in (2 ^ machine_wordsize)) in
     replace (2^machine_wordsize) with r in * by reflexivity.
 
     erewrite <-barrett_red256_fancy_correct with (error:=100000%positive) by eauto.
     rewrite <-barrett_red256_alloc_equivalent with (errorR := RegZero) (errorP := 1%positive) (extra_reg:=extra_reg)
-      by (auto; cbv [M muLow] in *; cbn; auto with omega).
+      by (auto; cbv [M muLow] in *; cbn; auto with lia).
 
     match goal with
       |- context [make_cc ?last_wrote ?ctx ?carry] =>
@@ -253,6 +252,17 @@ Module Barrett256.
   Qed.
 End Barrett256.
 
+Section with_notations.
+  Import Crypto.Language.IdentifiersBasicGENERATED.Compilers.
+  Import Crypto.Util.ZRange.
+  Local Open Scope zrange_scope.
+  Local Open Scope Z_scope.
+  Local Open Scope expr_scope.
+  Local Notation uint256 := r[0 ~> 115792089237316195423570985008687907853269984665640564039457584007913129639935]%zrange.
+  Local Set Printing Width 500.
+  Redirect "Crypto.Fancy.Barrett256.barrett_red256" Print Barrett256.barrett_red256.
+End with_notations.
+
 Import Registers.
 
 (* Notations to make code more readable *)
@@ -260,7 +270,8 @@ Local Notation "i rd x y ; cont" := (Instr i rd (x, y) cont) (at level 40, cont 
 Local Notation "i rd x y z ; cont" := (Instr i rd (x, y, z) cont) (at level 40, cont at level 200, format "i  rd  x  y  z ; '//' cont").
 
 (* Barrett reference code: *)
-Eval cbv beta iota delta [Prod.MulMod Prod.Mul256x256] in Prod.MulMod.
+Local Set Printing Width 150.
+Redirect "Crypto.Fancy.Barrett256.Prod.MulMod" Eval cbv beta iota delta [Prod.MulMod Prod.Mul256x256] in Prod.MulMod.
 (*
      = fun x xHigh RegMuLow scratchp1 scratchp2 scratchp3 scratchp4 scratchp5 : register =>
        let q1Bottom256 := scratchp1 in
@@ -304,8 +315,6 @@ Eval cbv beta iota delta [Prod.MulMod Prod.Mul256x256] in Prod.MulMod.
        Ret x
  *)
 
-(* Uncomment to see proof statement and remaining admitted statements. *)
-(*
-Check Barrett256.prod_barrett_red256_correct.
-Print Assumptions Barrett256.prod_barrett_red256_correct.
-*)
+(* Remove Redirect to see proof statement and remaining admitted statements. *)
+Redirect "Crypto.Fancy.Barrett256.prod_barrett_red256_correct" Check Barrett256.prod_barrett_red256_correct.
+Redirect "Crypto.Fancy.Barrett256.prod_barrett_red256_correct.Assumptions" Print Assumptions Barrett256.prod_barrett_red256_correct.

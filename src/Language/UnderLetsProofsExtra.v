@@ -10,6 +10,7 @@ Module Compilers.
   Import Language.Wf.Compilers.
   Import Language.API.Compilers.
   Import Language.WfExtra.Compilers.
+  Import UnderLets.Compilers.
   Import UnderLetsProofs.Compilers.
   Import Compilers.API.
 
@@ -26,7 +27,11 @@ Module Compilers.
       := @Interp_SubstVarOrIdent _ ident _ (@ident.interp) (@ident.interp_Proper) t e Hwf.
   End SubstVarLike.
 
+#[global]
   Hint Resolve SubstVarLike.Wf_SubstVar SubstVarLike.Wf_SubstVarLike SubstVarLike.Wf_SubstVarOrIdent : wf_extra.
+#[global]
+  Hint Opaque SubstVarLike.SubstVar SubstVarLike.SubstVarLike SubstVarLike.SubstVarOrIdent : wf_extra interp_extra.
+#[global]
   Hint Rewrite @SubstVarLike.Interp_SubstVar @SubstVarLike.Interp_SubstVarLike @SubstVarLike.Interp_SubstVarOrIdent : interp_extra.
 
   Module UnderLets.
@@ -53,6 +58,10 @@ Module Compilers.
            t e Hwf.
   End UnderLets.
 
+#[global]
   Hint Resolve UnderLets.Wf_LetBindReturn : wf_extra.
+#[global]
+  Hint Opaque UnderLets.LetBindReturn : wf_extra interp_extra.
+#[global]
   Hint Rewrite @UnderLets.Interp_LetBindReturn : interp_extra.
 End Compilers.

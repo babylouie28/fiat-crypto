@@ -1,11 +1,13 @@
 Require Import Coq.Classes.Morphisms.
 Require Import Coq.ZArith.ZArith.
+Require Import Coq.micromega.Lia.
 Require Import Crypto.Util.Tuple.
 Require Import Crypto.Util.Decidable.
 Require Import Crypto.Util.Bool.Reflect.
 Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.Notations.
 
+Declare Scope zrange_scope.
 Delimit Scope zrange_scope with zrange.
 Local Set Nonrecursive Elimination Schemes.
 (* COQBUG(https://github.com/coq/coq/issues/7835) *)
@@ -70,7 +72,7 @@ Lemma is_bounded_by_None_repeat_In_iff_lt {n} vs l u
     <-> (forall x, List.In x (Tuple.to_list _ vs) -> l <= x < u).
 Proof.
   rewrite is_bounded_by_None_repeat_In_iff.
-  split; intro H; (repeat let x := fresh in intro x; specialize (H x)); omega.
+  split; intro H; (repeat let x := fresh in intro x; specialize (H x)); lia.
 Qed.
 
 Definition is_bounded_by_bool (v : Z) (x : zrange) : bool
@@ -117,6 +119,7 @@ Proof.
 Qed.
 
 Module Export Notations.
+  Declare Scope zrange_scope.
   Delimit Scope zrange_scope with zrange.
   Notation "r[ l ~> u ]" := {| lower := l ; upper := u |} : zrange_scope.
   Infix "<=?" := is_tighter_than_bool : zrange_scope.

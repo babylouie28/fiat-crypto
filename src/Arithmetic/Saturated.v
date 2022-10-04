@@ -40,10 +40,10 @@ Module Associational.
                | _ => progress simpl flat_map
                | _ => rewrite IHq
                | _ => rewrite Z.mod_eq by assumption
-               | _ => ring_simplify; omega
+               | _ => ring_simplify; lia
                end.
     Qed.
-    Hint Rewrite eval_map_sat_multerm using (omega || assumption) : push_eval.
+    Hint Rewrite eval_map_sat_multerm using (lia || assumption) : push_eval.
 
     Lemma eval_sat_mul s p q (s_nonzero:s<>0):
       Associational.eval (sat_mul s p q) = Associational.eval p * Associational.eval q.
@@ -52,7 +52,7 @@ Module Associational.
       repeat match goal with
              | _ => progress (autorewrite with push_flat_map push_eval in * )
              | _ => rewrite IHp
-             | _ => ring_simplify; omega
+             | _ => ring_simplify; lia
              end.
     Qed.
     Hint Rewrite eval_sat_mul : push_eval.
@@ -83,10 +83,10 @@ Module Associational.
                | _ => progress break_match; Z.ltb_to_lt
                | _ => rewrite IHq
                | _ => rewrite Z.mod_eq by assumption
-               | _ => ring_simplify; omega
+               | _ => ring_simplify; lia
                end.
     Qed.
-    Hint Rewrite eval_map_sat_multerm_const using (omega || assumption) : push_eval.
+    Hint Rewrite eval_map_sat_multerm_const using (lia || assumption) : push_eval.
 
     Lemma eval_sat_mul_const s p q (s_nonzero:s<>0):
       Associational.eval (sat_mul_const s p q) = Associational.eval p * Associational.eval q.
@@ -95,7 +95,7 @@ Module Associational.
       repeat match goal with
              | _ => progress (autorewrite with push_flat_map push_eval in * )
              | _ => rewrite IHp
-             | _ => ring_simplify; omega
+             | _ => ring_simplify; lia
              end.
     Qed.
     Hint Rewrite eval_sat_mul_const : push_eval.
@@ -127,22 +127,28 @@ Module Columns.
       end.
 
     Section Flatten.
+      Context (add_split : Z -> Z -> Z -> Z * Z).
+      Context (add_split_mod :
+                 forall s x y, fst (add_split s x y) = (x + y) mod s)
+              (add_split_div :
+                 forall s x y, snd (add_split s x y) = (x + y) / s).
+      Hint Rewrite add_split_mod add_split_div : to_div_mod.
+
       Section flatten_column.
         Context (fw : Z). (* maximum size of the result *)
 
         (* Outputs (sum, carry) *)
         Definition flatten_column (digit: list Z) : (Z * Z) :=
           list_rect (fun _ => (Z * Z)%type) (0,0)
-                    (fun xx tl flatten_column_tl =>
+                    (fun x tl flatten_column_tl =>
                        list_case
-                         (fun _ => (Z * Z)%type) (xx mod fw, xx / fw)
-                         (fun yy tl' =>
+                         (fun _ => (Z * Z)%type) (x mod fw, x / fw)
+                         (fun y tl' =>
                             list_case
-                              (fun _ => (Z * Z)%type) (dlet_nd x := xx in dlet_nd y := yy in Z.add_get_carry_full fw x y)
+                              (fun _ => (Z * Z)%type) (add_split fw x y)
                               (fun _ _ =>
-                                 dlet_nd x := xx in
-                                   dlet_nd rec := flatten_column_tl in (* recursively get the sum and carry *)
-                                   dlet_nd sum_carry := Z.add_get_carry_full fw x (fst rec) in (* add the new value to the sum *)
+                                 dlet_nd rec := flatten_column_tl in (* recursively get the sum and carry *)
+                                   dlet_nd sum_carry := add_split fw x (fst rec) in (* add the new value to the sum *)
                                    dlet_nd carry' := snd sum_carry + snd rec in (* add the two carries together *)
                                    (fst sum_carry, carry'))
                               tl')
@@ -151,8 +157,11 @@ Module Columns.
       End flatten_column.
 
       Definition flatten_step (digit:list Z) (acc_carry:list Z * Z) : list Z * Z :=
-        dlet sum_carry := flatten_column (weight (S (length (fst acc_carry))) / weight (length (fst acc_carry))) (snd acc_carry::digit) in
-              (fst acc_carry ++ fst sum_carry :: nil, snd sum_carry).
+        let acc := fst acc_carry in
+        let carry := snd acc_carry in
+        let fw := weight (S (length acc)) / weight (length acc) in
+        dlet sum_carry := flatten_column fw (digit ++ [snd acc_carry]) in
+              (acc ++ fst sum_carry :: nil, snd sum_carry).
 
       Definition flatten (xs : list (list Z)) : list Z * Z :=
         fold_right (fun a b => flatten_step a b) (nil,0) (rev xs).
@@ -163,7 +172,7 @@ Module Columns.
                | |- context [list_rect _ _ _ ?ls] => rewrite single_list_rect_to_match; destruct ls
                | _ => progress (unfold flatten_step in *; fold flatten_step in * )
                | _ => rewrite Nat.add_1_r
-               | _ => rewrite Z.mul_div_eq_full by (auto with zarith; omega)
+               | _ => rewrite Z.mul_div_eq_full by (auto with zarith; lia)
                | _ => rewrite weight_multiples
                | _ => reflexivity
                | _ => solve [repeat (f_equal; try ring)]
@@ -181,7 +190,7 @@ Module Columns.
 
       Lemma flatten_column_mod fw (xs : list Z) :
         fst (flatten_column fw xs)  = sum xs mod fw.
-      Proof using Type.
+      Proof using add_split_mod.
         induction xs; simpl flatten_column; cbv [Let_In];
           repeat match goal with
                  | _ => rewrite IHxs
@@ -191,14 +200,14 @@ Module Columns.
 
       Lemma flatten_column_div fw (xs : list Z) (fw_nz : fw <> 0) :
         snd (flatten_column fw xs)  = sum xs / fw.
-      Proof using Type.
+      Proof using add_split_div add_split_mod.
         (* this hint is already in the database but Z.div_add_l' is triggered first and that screws things up *)
         Hint Rewrite <- Z.div_add' using zutil_arith : pull_Zdiv.
         induction xs; simpl flatten_column; cbv [Let_In];
           repeat match goal with
                  | _ => rewrite IHxs
                  | _ => rewrite <-Z.div_add' by zutil_arith
-                 | _ => rewrite Z.mul_div_eq_full by omega
+                 | _ => rewrite Z.mul_div_eq_full by lia
                  | _ => progress push
                  end.
       Qed. Hint Rewrite flatten_column_div using auto with zarith : to_div_mod.
@@ -207,10 +216,12 @@ Module Columns.
 
       Lemma length_flatten_step digit state :
         length (fst (flatten_step digit state)) = S (length (fst state)).
-      Proof using Type. cbv [flatten_step]; push. Qed.
+      Proof using add_split_mod. cbv [flatten_step]; push. Qed.
       Hint Rewrite length_flatten_step : distr_length.
       Lemma length_flatten inp : length (fst (flatten inp)) = length inp.
-      Proof using Type. cbv [flatten]. induction inp using rev_ind; push. Qed.
+      Proof using add_split_mod.
+        cbv [flatten]. induction inp using rev_ind; push.
+      Qed.
       Hint Rewrite length_flatten : distr_length.
 
       Lemma flatten_snoc x inp : flatten (inp ++ [x]) = flatten_step x (flatten inp).
@@ -221,7 +232,7 @@ Module Columns.
           length inp = n ->
           flatten inp = (Partition.partition weight n (eval n inp),
                          eval n inp / (weight n)).
-      Proof using wprops.
+      Proof using wprops add_split_mod add_split_div.
         induction inp using rev_ind; intros;
           destruct n; distr_length; [ reflexivity | ].
         rewrite flatten_snoc.
@@ -247,7 +258,7 @@ Module Columns.
         (Positional.eval weight n (fst (flatten inp))
          = (eval n inp) mod (weight n))
         /\ (snd (flatten inp) = eval n inp / weight n).
-      Proof using wprops.
+      Proof using wprops add_split_mod add_split_div.
         intros.
         rewrite flatten_correct with (n:=n) by auto.
         cbn [fst snd].
@@ -257,13 +268,28 @@ Module Columns.
       Lemma flatten_mod {n} inp :
         length inp = n ->
         (Positional.eval weight n (fst (flatten inp)) = (eval n inp) mod (weight n)).
-      Proof using wprops. apply flatten_div_mod. Qed.
+      Proof using wprops add_split_mod add_split_div.
+        apply flatten_div_mod.
+      Qed.
       Hint Rewrite @flatten_mod : push_eval.
 
       Lemma flatten_div {n} inp :
         length inp = n -> snd (flatten inp) = eval n inp / weight n.
-      Proof using wprops. apply flatten_div_mod. Qed.
+      Proof using wprops add_split_mod add_split_div.
+        apply flatten_div_mod.
+      Qed.
       Hint Rewrite @flatten_div : push_eval.
+
+      Lemma flatten_same_sum p q :
+        Forall2 (fun x y => sum x = sum y) p q ->
+        flatten p = flatten q.
+      Proof using wprops add_split_mod add_split_div.
+        cbv [flatten].
+        let H := fresh in
+        intro H; apply Forall2_rev in H;
+          induction H; [ reflexivity | ].
+        push.
+      Qed.
     End Flatten.
 
     Section FromAssociational.
@@ -333,6 +359,32 @@ Module Columns.
                     (from_associational n p).
       Proof using Type. reflexivity. Qed.
     End FromAssociational.
+
+    Section Reverse.
+      Definition reverse (p : list (list Z)) : list (list Z) :=
+        map (@rev Z) p.
+
+      Lemma eval_reverse n p :
+        eval n (reverse p) = eval n p.
+      Proof.
+        cbv [eval reverse]. rewrite map_map.
+        f_equal. apply map_ext; intros.
+        autorewrite with push_sum. reflexivity.
+      Qed. Hint Rewrite @eval_reverse : push_eval.
+
+      Lemma length_reverse p :
+        length (reverse p) = length p.
+      Proof. cbv [reverse]; distr_length. Qed.
+      Hint Rewrite @length_reverse : distr_length.
+
+      Lemma reverse_same_sum p :
+        Forall2 (fun x y => sum x = sum y) (reverse p) p.
+      Proof.
+        cbv [reverse].
+        induction p; cbn [rev map]; constructor;
+          autorewrite with push_sum; auto.
+      Qed.
+    End Reverse.
   End Columns.
 End Columns.
 
@@ -354,7 +406,7 @@ Module Rows.
     Proof using Type. cbv [eval]. rewrite map_nil, sum_nil; reflexivity. Qed.
     Hint Rewrite eval_nil : push_eval.
     Lemma eval0 x : eval 0 x = 0.
-    Proof using Type. cbv [eval]. induction x; autorewrite with push_map push_sum push_eval; omega. Qed.
+    Proof using Type. cbv [eval]. induction x; autorewrite with push_map push_sum push_eval; lia. Qed.
     Hint Rewrite eval0 : push_eval.
     Lemma eval_cons n r inp : eval n (r :: inp) = Positional.eval weight n r + eval n inp.
     Proof using Type. cbv [eval]; autorewrite with push_map push_sum; reflexivity. Qed.
@@ -450,7 +502,7 @@ Module Rows.
                | _ => progress (intros; subst)
                | _ => progress autorewrite with cancel_pair push_eval in *
                | _ => progress In_cases
-               | _ => split; try omega
+               | _ => split; try lia
                | H: _ /\ _ |- _ => destruct H
                | _ => progress distr_length
                | _ => solve [auto]
@@ -511,7 +563,7 @@ Module Rows.
                  | _ => progress autorewrite with cancel_pair push_eval push_max_column_size
                  | _ => rewrite max_column_size0 with (inp := fst (from_columns' _ _)) by
                        (autorewrite with push_max_column_size; distr_length)
-                 | _ => omega
+                 | _ => lia
                  end.
       Qed.
       Hint Rewrite eval_from_columns using (auto; solve [distr_length]) : push_eval.
@@ -571,7 +623,7 @@ Module Rows.
         end.
         { distr_length.
           rewrite Columns.length_from_associational.
-          remember (Nat.pred n) as m. replace n with (S m) by omega.
+          remember (Nat.pred n) as m. replace n with (S m) by lia.
           apply Positional.place_in_range. }
         rewrite <-nth_default_eq in *.
         autorewrite with push_nth_default in *.
@@ -585,7 +637,7 @@ Module Rows.
       Proof using Type.
         intros; cbv [from_associational from_columns from_columns'].
         pose proof (max_column_size_Columns_from_associational n p ltac:(auto) ltac:(auto)).
-        case_eq (max_column_size (Columns.from_associational weight n p)); [omega|].
+        case_eq (max_column_size (Columns.from_associational weight n p)); [lia|].
         intros; cbn.
         rewrite <-length_zero_iff_nil. distr_length.
       Qed.
@@ -764,7 +816,7 @@ Module Rows.
                  | |- pair _ _ = pair _ _ => f_equal
                  | _ => apply (@partition_eq_mod _ wprops)
                  | _ => rewrite <-Z.div_add_l' by auto with zarith
-                 | _ => rewrite Z.mod_add'_full by omega
+                 | _ => rewrite Z.mod_add'_full by lia
                  | _ => rewrite Z.mul_div_eq_full by auto with zarith
                  | _ => progress (push_Zmod; pull_Zmod)
                  | _ => progress push
@@ -888,7 +940,7 @@ Module Rows.
       Lemma conditional_add_partitions n mask cond p q :
         length p = n -> length q = n -> map (Z.land mask) q = q ->
         fst (conditional_add n mask cond p q)
-        = Partition.partition weight n (Positional.eval weight n p + if dec (cond = 0) then 0 else Positional.eval weight n q).
+        = Partition.partition weight n (Positional.eval weight n p + (if dec (cond = 0) then 0 else Positional.eval weight n q)).
       Proof using wprops.
         cbv [conditional_add]; intros; rewrite add_partitions by (distr_length; auto).
         autorewrite with push_eval; reflexivity.
@@ -896,7 +948,7 @@ Module Rows.
 
       Lemma conditional_add_div n mask cond p q :
         length p = n -> length q = n -> map (Z.land mask) q = q ->
-        snd (conditional_add n mask cond p q) = (Positional.eval weight n p + if dec (cond = 0) then 0 else Positional.eval weight n q) / weight n.
+        snd (conditional_add n mask cond p q) = (Positional.eval weight n p + (if dec (cond = 0) then 0 else Positional.eval weight n q)) / weight n.
       Proof using wprops.
         cbv [conditional_add]; intros; rewrite add_div by (distr_length; auto).
         autorewrite with push_eval; auto.
@@ -938,7 +990,7 @@ Module Rows.
             (rewrite Hp; autorewrite with push_eval; auto using Z.mod_pos_bound).
         rewrite sub_partitions, sub_div; distr_length.
         erewrite Positional.select_eq by (distr_length; eauto).
-        rewrite Z.div_sub_small, Z.ltb_antisym by omega.
+        rewrite Z.div_sub_small, Z.ltb_antisym by lia.
         destruct (Positional.eval weight n q <=? Positional.eval weight n p);
           cbn [negb]; autorewrite with zsimplify_fast;
             break_match; try lia; congruence.
@@ -962,8 +1014,8 @@ Module Rows.
         rewrite sub_partitions, add_partitions, sub_div by distr_length.
         autorewrite with push_eval.
         Z.rewrite_mod_small.
-        rewrite Z.div_sub_small by omega.
-        break_innermost_match; Z.ltb_to_lt; try omega;
+        rewrite Z.div_sub_small by lia.
+        break_innermost_match; Z.ltb_to_lt; try lia;
           auto using partition_eq_mod with zarith.
       Qed.
 
@@ -1034,7 +1086,10 @@ Module Rows.
         := (tl p, hd 0 p).
     End Ops.
   End Rows.
+#[global]
   Hint Rewrite length_from_columns using eassumption : distr_length.
+#[global]
   Hint Rewrite length_sum_rows using solve [ reflexivity | eassumption | distr_length; eauto ] : distr_length.
+#[global]
   Hint Rewrite length_fst_extract_row length_snd_extract_row length_flatten length_fst_from_columns' length_snd_from_columns' : distr_length.
 End Rows.

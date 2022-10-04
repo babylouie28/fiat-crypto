@@ -75,6 +75,9 @@ Module Z.
        then sub_with_get_borrow (Z.log2 bound) c x y
        else ((x - y - c) mod bound, -((x - y - c) / bound)).
 
+  Definition add_split (s x y : Z) : Z * Z
+    := dlet sum := Z.add x y in (sum mod s, sum / s).
+
   Definition mul_split_at_bitwidth (bitwidth : Z) (x y : Z) : Z * Z
     := dlet xy := x * y in
        (if Z.geb bitwidth 0
@@ -88,6 +91,13 @@ Module Z.
        then mul_split_at_bitwidth (Z.log2 s) x y
        else ((x * y) mod s, (x * y) / s).
 
+  Definition mul_high (s x y : Z) : Z
+    := snd (mul_split s x y).
+
+  (** returns [1] iff [x < y] *)
+  Definition ltz (x y : Z) : Z
+    := if x <? y then 1 else 0.
+
   Definition combine_at_bitwidth (bitwidth lo hi : Z) : Z
     := lo + (hi << bitwidth).
 
@@ -96,4 +106,59 @@ Module Z.
     := if (0 <=? x)%Z
        then 2^(Z.log2_up (x+1))-1
        else -2^(Z.log2_up (-x)).
+
+  Fixpoint log10_fuel (fuel : nat) (v : Z) :=
+    match fuel with
+    | O => 0
+    | S fuel
+      => if v >? 1
+         then 1 + log10_fuel fuel (v / 10)
+         else 0
+    end.
+  Definition log10 (v : Z) : Z := log10_fuel (Z.to_nat (Z.log2 v)) v.
+
+  (** Special identity function for constant-time cmov *)
+  Definition value_barrier (x : Z) := x.
+  
+  (* arithmetic right shift *)
+  Definition arithmetic_shiftr1 (m a : Z) :=
+    (a &' 2^(m - 1)) |' (a >> 1).
+
+  Definition sign_bit m a := a >> (m - 1).
+
+  Definition ones_from m k := (Z.ones k) << (m - k).
+  Definition ones_at m k := (Z.ones k) << m.
+
+  Definition sign_extend old_m new_m a :=
+    dlet q := Z.zselect (sign_bit old_m a) 0 (ones_at old_m (new_m - old_m)) in
+          q |' a.
+
+  Definition arithmetic_shiftr m a k :=
+    dlet q := Z.zselect (sign_bit m a) 0 (ones_from m k) in
+          q |' (a >> k).
+
+  (** Note that the following definition may be inconvenient to reason about,
+      and [(a + 2^(m-1)) mod 2^m - 2^(m-1)] may prove simpler to reason about arithmetically. 
+      See also https://github.com/mit-plv/coqutil/blob/c8006ceca816076b117c31d7feaefb5bbb850754/src/coqutil/Word/Naive.v#L15
+      and https://github.com/mit-plv/coqutil/blob/c8006ceca816076b117c31d7feaefb5bbb850754/src/coqutil/Word/Properties.v#L190 *)
+
+  Definition twos_complement m a :=
+    (if ((a mod 2 ^ m) <? 2 ^ (m - 1)) then a mod 2 ^ m else a mod 2 ^ m - 2 ^ m).
+
+  (* Negation in twos complement *)
+  Definition twos_complement_opp m a :=
+    ((Z.lnot_modulo a (2 ^ m)) + 1) mod (2 ^ m).
+
+  (* Check if a number considered in twos complement of bitwidth m is negative *)
+  Definition twos_complement_neg m a := a >> (m - 1).
+
+  (* note the corner case condition: when f is exactly 2 to the mw-1'th power, then -f = f and
+   so checking that -f is negative does not work in that case.
+   This is not really an issue, since it just requires that our integers are small (which they are)
+   Long term, we would like to add comparison operators to the supported C language *)
+  Definition twos_complement_pos m a :=
+    dlet b := twos_complement_opp m a in sign_bit m b.
+
+  Definition twos_complement_mul ma mb a b :=
+    (sign_extend ma (ma + mb) a) * (sign_extend mb (ma + mb) b).
 End Z.

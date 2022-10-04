@@ -12,9 +12,9 @@ Module Z.
     : ((a mod n) mod m = a mod m)%Z.
   Proof.
     assert ((a mod n) < m)%Z
-      by (eapply Z.lt_le_trans; [ apply Z.mod_pos_bound | ]; omega).
+      by (eapply Z.lt_le_trans; [ apply Z.mod_pos_bound | ]; lia).
     rewrite (Z.mod_small _ m) by auto with zarith.
-    apply Z.mod_divide in Hnm; [ | omega ].
+    apply Z.mod_divide in Hnm; [ | lia ].
     destruct Hnm as [x ?]; subst.
     repeat match goal with
            | [ H : context[(_ mod _)%Z] |- _ ]
@@ -44,4 +44,19 @@ Module Z.
            end.
   Ltac rewrite_mod_small_more :=
     repeat (rewrite_mod_small || rewrite_mod_mod_small).
+  Ltac rewrite_mod_small_in_hyps :=
+    repeat match goal with
+           | [ H : context[?x mod ?y] |- _ ]
+             => rewrite (Z.mod_small x y) in H by rewrite_mod_small_solver
+           end.
+  Ltac rewrite_mod_mod_small_in_hyps :=
+    repeat match goal with
+           | [ H : context[(?a mod ?n) mod ?m] |- _ ]
+             => rewrite (mod_mod_small a n m) in H by rewrite_mod_small_solver
+           end.
+  Ltac rewrite_mod_small_more_in_hyps :=
+    repeat (rewrite_mod_small_in_hyps || rewrite_mod_mod_small_in_hyps).
+  Ltac rewrite_mod_small_in_all := repeat (rewrite_mod_small || rewrite_mod_small_in_hyps).
+  Ltac rewrite_mod_mod_small_in_all := repeat (rewrite_mod_mod_small || rewrite_mod_mod_small_in_hyps).
+  Ltac rewrite_mod_small_more_in_all := repeat (rewrite_mod_small_more || rewrite_mod_small_more_in_hyps).
 End Z.

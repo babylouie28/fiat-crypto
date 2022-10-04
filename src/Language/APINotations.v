@@ -3,8 +3,11 @@ Require Import Coq.FSets.FMapPositive.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.Morphisms.
 Require Import Coq.Relations.Relation_Definitions.
+Require Import Ltac2.Ltac2.
+Require Import Ltac2.Printf.
 Require Import Crypto.Language.PreExtra.
 Require Import Rewriter.Language.Language.
+Require Import Rewriter.Language.Reify.
 Require Import Crypto.Language.IdentifiersBasicGENERATED.
 Require Import Crypto.Util.Tuple Crypto.Util.Prod Crypto.Util.LetIn.
 Require Import Crypto.Util.ListUtil Coq.Lists.List Crypto.Util.NatUtil.
@@ -30,6 +33,7 @@ Import EqNotations.
 Module Compilers.
   Export Language.Pre.
   Export Language.Compilers.
+  Export Reify.Compilers.
   Import IdentifiersBasicLibrary.Compilers.
   Import IdentifiersBasicLibrary.Compilers.Basic.
   Import IdentifiersBasicGenerate.Compilers.Basic.Tactic.
@@ -62,6 +66,9 @@ Module Compilers.
   Bind Scope etype_scope with base.
 
   Global Arguments ident_Literal {_} _ : assert.
+  Global Arguments ident_comment {_} : assert.
+  Global Arguments ident_comment_no_keep {_} : assert.
+  Global Arguments ident_value_barrier : assert.
   Global Arguments ident_nil {_} : assert.
   Global Arguments ident_cons {_} : assert.
   Global Arguments ident_pair {_ _} : assert.
@@ -69,6 +76,7 @@ Module Compilers.
   Global Arguments ident_snd {_ _} : assert.
   Global Arguments ident_prod_rect {_ _ _} : assert.
   Global Arguments ident_bool_rect {_} : assert.
+  Global Arguments ident_bool_rect_nodep {_} : assert.
   Global Arguments ident_nat_rect {_} : assert.
   Global Arguments ident_nat_rect_arrow {_ _} : assert.
   Global Arguments ident_eager_nat_rect {_} : assert.
@@ -98,24 +106,55 @@ Module Compilers.
   Global Arguments ident_zrange_rect {_} : assert.
   Global Arguments eta_base_cps {_} _ _ : assert.
   Global Arguments ident_interp {_} _ : assert.
-  Global Arguments base_interp_beq {_} _ _ : assert.
+  Global Arguments base_interp_beq {_ _} _ _ : assert.
   Global Arguments reflect_base_interp_beq {_}.
   Global Arguments ident_is_var_like {_} _ : assert.
   Global Arguments eqv_Reflexive_Proper {_} _.
   Global Arguments ident_interp_Proper {_}.
 
-  Ltac reify_base :=
-    let package := reify_package_of_package package in
+  Ltac2 mk_reify_base () :=
+    let package := reify_package_of_package 'package in
     reify_base_via_reify_package package.
-  Ltac reify_base_type :=
-    let package := reify_package_of_package package in
+  Ltac2 mk_reify_base_type () :=
+    let package := reify_package_of_package 'package in
     reify_base_type_via_reify_package package.
-  Ltac reify_type :=
-    let package := reify_package_of_package package in
+  Ltac2 mk_reify_type () :=
+    let package := reify_package_of_package 'package in
     reify_type_via_reify_package package.
-  Ltac reify_ident :=
-    let package := reify_package_of_package package in
-    reify_ident_via_reify_package package.
+  Ltac2 mk_reify_ident_opt () :=
+    let package := reify_package_of_package 'package in
+    reify_ident_via_reify_package_opt package.
+  Ltac2 reify_base (ty : constr) : constr := mk_reify_base () ty.
+  Ltac2 reify_base_type (ty : constr) : constr := mk_reify_base_type () ty.
+  Ltac2 reify_type (ty : constr) : constr := mk_reify_type () ty.
+  Ltac2 reify_ident_opt (ctx_tys : binder list) (idc : constr) : constr option := mk_reify_ident_opt () ctx_tys idc.
+
+  #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+   Ltac reify_base term :=
+    let f := ltac2:(term
+                    |- Control.refine (fun () => reify_base (Option.get (Ltac1.to_constr term)))) in
+    constr:(ltac:(f term)).
+  #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+   Ltac reify_base_type term :=
+    let f := ltac2:(term
+                    |- Control.refine (fun () => reify_base_type (Option.get (Ltac1.to_constr term)))) in
+    constr:(ltac:(f term)).
+  #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+   Ltac reify_type term :=
+    let f := ltac2:(term
+                    |- Control.refine (fun () => reify_type (Option.get (Ltac1.to_constr term)))) in
+    constr:(ltac:(f term)).
+  #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+   Ltac reify_ident term then_tac else_tac :=
+    let f := ltac2:(term
+                    |- match reify_ident_opt [] (Option.get (Ltac1.to_constr term)) with
+                       | Some v => Control.refine (fun () => '(@Datatypes.Some _ $v))
+                       | None => Control.refine (fun () => '(@Datatypes.None Datatypes.unit))
+                       end) in
+    match f term with
+    | Datatypes.Some ?v => then_tac v
+    | Datatypes.None => else_tac ()
+    end.
 
   (** This file defines some convenience notations and definitions. *)
   Module base.
@@ -129,6 +168,7 @@ Module Compilers.
       Notation zrange := zrange (only parsing).
       Notation bool := bool (only parsing).
       Notation base_beq := Compilers.base_beq (only parsing).
+      Notation string := string (only parsing).
 
       Export Language.Compilers.base.type.
       Notation type := (@type base) (only parsing).
@@ -147,6 +187,12 @@ Module Compilers.
     Notation try_make_base_transport_cps := Compilers.try_make_base_transport_cps (only parsing).
     Notation try_make_base_transport_cps_correct := Compilers.try_make_base_transport_cps_correct (only parsing).
 
+    (* Avoid COQBUG(https://github.com/coq/coq/issues/16425)
+    Notation reify_base t := (ltac2:(let rt := reify_base (Constr.pretype t) in exact $rt)) (only parsing).
+    Notation reify t := (ltac2:(let rt := reify_base_type (Constr.pretype t) in exact $rt)) (only parsing).
+    Notation reify_norm_base t := (ltac2:(let t' := Constr.pretype t in let t' := eval cbv in $t' in let rt := reify_base t' in exact $rt)) (only parsing).
+    Notation reify_norm t := (ltac2:(let t' := Constr.pretype t in let t' := eval cbv in $t' in let rt := reify_base_type t' in exact $rt)) (only parsing).
+     *)
     Notation reify_base t := (ltac:(let rt := reify_base t in exact rt)) (only parsing).
     Notation reify t := (ltac:(let rt := reify_base_type t in exact rt)) (only parsing).
     Notation reify_norm_base t := (ltac:(let t' := eval cbv in t in let rt := reify_base t' in exact rt)) (only parsing).
@@ -156,9 +202,18 @@ Module Compilers.
     Notation reify_norm_base_type_of e := (reify_norm_base ((fun t (_ : t) => t) _ e)) (only parsing).
     Notation reify_norm_type_of e := (reify_norm ((fun t (_ : t) => t) _ e)) (only parsing).
 
-    Ltac reify_base ty := Compilers.reify_base ty.
-    Ltac reify ty := Compilers.reify_base_type ty.
-    Ltac reify_type ty := Compilers.reify_type ty.
+    Ltac2 mk_reify_base := Compilers.mk_reify_base.
+    Ltac2 mk_reify := Compilers.mk_reify_base_type.
+    Ltac2 mk_reify_type := Compilers.mk_reify_type.
+    Ltac2 reify_base := Compilers.reify_base.
+    Ltac2 reify := Compilers.reify_base_type.
+    Ltac2 reify_type := Compilers.reify_type.
+    #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+     Ltac reify_base ty := Compilers.reify_base ty.
+    #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+     Ltac reify ty := Compilers.reify_base_type ty.
+    #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+     Ltac reify_type ty := Compilers.reify_type ty.
   End base.
 
   Module ident.
@@ -166,6 +221,9 @@ Module Compilers.
     Notation ident := Compilers.ident (only parsing).
 
     Notation Literal := Compilers.ident_Literal (only parsing).
+    Notation comment := Compilers.ident_comment (only parsing).
+    Notation comment_no_keep := Compilers.ident_comment_no_keep (only parsing).
+    Notation value_barrier := Compilers.ident_value_barrier (only parsing).
     Notation Nat_succ := Compilers.ident_Nat_succ (only parsing).
     Notation Nat_pred := Compilers.ident_Nat_pred (only parsing).
     Notation Nat_max := Compilers.ident_Nat_max (only parsing).
@@ -181,6 +239,7 @@ Module Compilers.
     Notation snd := Compilers.ident_snd (only parsing).
     Notation prod_rect := Compilers.ident_prod_rect (only parsing).
     Notation bool_rect := Compilers.ident_bool_rect (only parsing).
+    Notation bool_rect_nodep := Compilers.ident_bool_rect_nodep (only parsing).
     Notation nat_rect := Compilers.ident_nat_rect (only parsing).
     Notation nat_rect_arrow := Compilers.ident_nat_rect_arrow (only parsing).
     Notation eager_nat_rect := Compilers.ident_eager_nat_rect (only parsing).
@@ -229,13 +288,16 @@ Module Compilers.
     Notation Z_max := Compilers.ident_Z_max (only parsing).
     Notation Z_bneg := Compilers.ident_Z_bneg (only parsing).
     Notation Z_lnot_modulo := Compilers.ident_Z_lnot_modulo (only parsing).
+    Notation Z_lxor := Compilers.ident_Z_lxor (only parsing).
     Notation Z_truncating_shiftl := Compilers.ident_Z_truncating_shiftl (only parsing).
     Notation Z_mul_split := Compilers.ident_Z_mul_split (only parsing).
+    Notation Z_mul_high := Compilers.ident_Z_mul_high (only parsing).
     Notation Z_add_get_carry := Compilers.ident_Z_add_get_carry (only parsing).
     Notation Z_add_with_carry := Compilers.ident_Z_add_with_carry (only parsing).
     Notation Z_add_with_get_carry := Compilers.ident_Z_add_with_get_carry (only parsing).
     Notation Z_sub_get_borrow := Compilers.ident_Z_sub_get_borrow (only parsing).
     Notation Z_sub_with_get_borrow := Compilers.ident_Z_sub_with_get_borrow (only parsing).
+    Notation Z_ltz := Compilers.ident_Z_ltz (only parsing).
     Notation Z_zselect := Compilers.ident_Z_zselect (only parsing).
     Notation Z_add_modulo := Compilers.ident_Z_add_modulo (only parsing).
     Notation Z_rshi := Compilers.ident_Z_rshi (only parsing).
@@ -272,13 +334,23 @@ Module Compilers.
     Notation toRestrictedIdent := Compilers.toRestrictedIdent (only parsing).
     Notation toFromRestrictedIdent := Compilers.toFromRestrictedIdent (only parsing).
 
-    Ltac reify := Compilers.reify_ident.
+    Ltac2 mk_reify_opt := Compilers.mk_reify_ident_opt.
+    Ltac2 reify_opt := Compilers.reify_ident_opt.
+    #[deprecated(since="8.15",note="Use Ltac2 instead.")]
+     Ltac reify := Compilers.reify_ident.
 
     Notation buildIdent := Compilers.buildIdent (only parsing).
     Notation is_var_like := Compilers.ident_is_var_like (only parsing).
     Notation buildInterpIdentCorrect := Compilers.buildInterpIdentCorrect (only parsing).
     Notation eqv_Reflexive_Proper := Compilers.eqv_Reflexive_Proper (only parsing).
     Notation interp_Proper := Compilers.ident_interp_Proper (only parsing).
+
+    Definition is_comment t (idc : ident t) : Datatypes.bool
+      := match idc with
+         | comment _ => true
+         | comment_no_keep _ => true
+         | _ => false
+         end.
 
     Module Export Notations.
       Export Language.Compilers.ident.Notations.
@@ -290,15 +362,15 @@ Module Compilers.
       Notation "## x" := (Compilers.ident_Literal (t:=base.reify_base_type_of x) x) (only parsing) : ident_scope.
       Notation "## x" := (expr.Ident (Compilers.ident_Literal x)) (only printing) : expr_scope.
       Notation "## x" := (smart_Literal (base_interp:=base_interp) (t:=base.reify_type_of x) x) (only parsing) : expr_scope.
-      Notation "# x" := (expr.Ident x) : expr_pat_scope.
+      Notation "# x" := (expr.Ident x) (only parsing) : expr_pat_scope.
       Notation "# x" := (@expr.Ident base.type _ _ _ x) : expr_scope.
-      Notation "x @ y" := (expr.App x%expr_pat y%expr_pat) : expr_pat_scope.
+      Notation "x @ y" := (expr.App x%expr_pat y%expr_pat) (only parsing) : expr_pat_scope.
       Notation "( x , y , .. , z )" := (expr.App (expr.App (#Compilers.ident_pair) .. (expr.App (expr.App (#Compilers.ident_pair) x%expr) y%expr) .. ) z%expr) : expr_scope.
-      Notation "( x , y , .. , z )" := (expr.App (expr.App (#Compilers.ident_pair)%expr_pat .. (expr.App (expr.App (#Compilers.ident_pair)%expr_pat x%expr_pat) y%expr_pat) .. ) z%expr_pat) : expr_pat_scope.
+      Notation "( x , y , .. , z )" := (expr.App (expr.App (#Compilers.ident_pair)%expr_pat .. (expr.App (expr.App (#Compilers.ident_pair)%expr_pat x%expr_pat) y%expr_pat) .. ) z%expr_pat) (only parsing) : expr_pat_scope.
       Notation "x :: y" := (#Compilers.ident_cons @ x @ y)%expr : expr_scope.
       Notation "[ ]" := (#Compilers.ident_nil)%expr : expr_scope.
-      Notation "x :: y" := (#Compilers.ident_cons @ x @ y)%expr_pat : expr_pat_scope.
-      Notation "[ ]" := (#Compilers.ident_nil)%expr_pat : expr_pat_scope.
+      Notation "x :: y" := (#Compilers.ident_cons @ x @ y)%expr_pat (only parsing) : expr_pat_scope.
+      Notation "[ ]" := (#Compilers.ident_nil)%expr_pat (only parsing) : expr_pat_scope.
       Notation "[ x ]" := (x :: [])%expr : expr_scope.
       Notation "[ x ; y ; .. ; z ]" := (#Compilers.ident_cons @ x @ (#Compilers.ident_cons @ y @ .. (#Compilers.ident_cons @ z @ #Compilers.ident_nil) ..))%expr : expr_scope.
       Notation "ls [[ n ]]"
@@ -321,12 +393,41 @@ Module Compilers.
   Export ident.Notations.
   Notation ident := IdentifiersBasicGENERATED.Compilers.ident (only parsing).
 
+  Ltac2 reify (var : constr) (term : constr) : constr :=
+    let reify_base_type := mk_reify_base_type () in
+    let reify_ident_opt := mk_reify_ident_opt () in
+    expr.reify 'base.type 'ident reify_base_type reify_ident_opt var term None.
+  Ltac2 _Reify (term : constr) : constr :=
+    let reify_base_type := mk_reify_base_type () in
+    let reify_ident_opt := mk_reify_ident_opt () in
+    expr._Reify 'base.type 'ident reify_base_type reify_ident_opt term.
+  Ltac2 _Reify_rhs () : unit :=
+    let reify_base_type := mk_reify_base_type () in
+    let reify_ident_opt := mk_reify_ident_opt () in
+    expr._Reify_rhs 'base.type 'ident reify_base_type reify_ident_opt '@base.interp '@ident_interp ().
+  Ltac2 Type exn ::= [ Not_a_constr (string, string, Ltac1.t) ].
   Ltac reify var term :=
-    expr.reify constr:(base.type) ident ltac:(reify_base_type) ltac:(reify_ident) var term.
+    let f := ltac2:(var term
+                    |- let get_to_constr name x
+                         := match Ltac1.to_constr x with
+                            | Some x => x
+                            | None => Control.zero (Not_a_constr "APINotations.Compilers.reify" name x)
+                            end in
+                       let v := reify (get_to_constr "var" var) (get_to_constr "term" term) in
+                       Control.refine (fun () => v)) in
+    constr:(ltac:(f constr:(var) term)).
   Ltac Reify term :=
-    expr.Reify constr:(base.type) ident ltac:(reify_base_type) ltac:(reify_ident) term.
+    let f := ltac2:(term
+                    |- let get_to_constr name x
+                         := match Ltac1.to_constr x with
+                            | Some x => x
+                            | None => Control.zero (Not_a_constr "APINotations.Compilers.Reify" name x)
+                            end in
+                       let v := _Reify (get_to_constr "term" term) in
+                       Control.refine (fun () => v)) in
+    constr:(ltac:(f term)).
   Ltac Reify_rhs _ :=
-    expr.Reify_rhs constr:(base.type) ident ltac:(reify_base_type) ltac:(reify_ident) (@base.interp) (@ident_interp) ().
+    ltac2:(_Reify_rhs ()).
 
   Global Hint Extern 1 (@expr.Reified_of _ _ _ _ ?t ?v ?rv)
   => cbv [expr.Reified_of]; Reify_rhs (); reflexivity : typeclass_instances.
@@ -390,6 +491,22 @@ Module Compilers.
              => r <- invert_Z_cast2 idc;
                   Some (r, v)
            | _ => None
+           end.
+
+      Definition invert_App_cast {t} (e : expr t)
+        : option ((type.interp (Language.Compilers.base.interp (fun _ => ZRange.zrange)) t) * expr t)
+        := match t return expr t -> option (type.interp _ t * expr t) with
+           | type.base tZ => invert_App_Z_cast
+           | type.base (tZ * tZ) => invert_App_Z_cast2
+           | _ => fun _ => None
+           end e.
+
+      Definition invert_Literal_through_cast {t} (e : expr t)
+        : option (option (type.interp (Language.Compilers.base.interp (fun _ => ZRange.zrange)) t) * type.interp base.interp t)
+        := match invert_Literal e, invert_App_cast e with
+           | Some v, _ => Some (None, v)
+           | None, Some (r, e) => (v <- invert_Literal e; Some (Some r, v))%option
+           | None, None => None
            end.
     End with_var.
   End invert_expr.

@@ -16,21 +16,30 @@ Module Compilers.
 
   Module Import RewriteRules.
     Section __.
-      Definition VerifiedRewriterArithWithCasts : VerifiedRewriter_with_args false arith_with_casts_rewrite_rules_proofs.
+      Context (adc_no_carry_to_add : bool).
+
+      Definition VerifiedRewriterArithWithCasts : VerifiedRewriter_with_args false false true (arith_with_casts_rewrite_rules_proofs adc_no_carry_to_add).
       Proof using All. make_rewriter. Defined.
 
-      Definition RewriteArithWithCasts {t} := Eval hnf in @Rewrite VerifiedRewriterArithWithCasts t.
+      Definition default_opts := Eval hnf in @default_opts VerifiedRewriterArithWithCasts.
+      Let optsT := Eval hnf in optsT VerifiedRewriterArithWithCasts.
 
-      Lemma Wf_RewriteArithWithCasts {t} e (Hwf : Wf e) : Wf (@RewriteArithWithCasts t e).
+      Definition RewriteArithWithCasts (opts : optsT) {t : API.type} := Eval hnf in @Rewrite VerifiedRewriterArithWithCasts opts t.
+
+      Lemma Wf_RewriteArithWithCasts opts {t} e (Hwf : Wf e) : Wf (@RewriteArithWithCasts opts t e).
       Proof. now apply VerifiedRewriterArithWithCasts. Qed.
 
-      Lemma Interp_RewriteArithWithCasts {t} e (Hwf : Wf e) : API.Interp (@RewriteArithWithCasts t e) == API.Interp e.
+      Lemma Interp_RewriteArithWithCasts opts {t} e (Hwf : Wf e) : API.Interp (@RewriteArithWithCasts opts t e) == API.Interp e.
       Proof. now apply VerifiedRewriterArithWithCasts. Qed.
     End __.
   End RewriteRules.
 
   Module Export Hints.
+#[global]
     Hint Resolve Wf_RewriteArithWithCasts : wf wf_extra.
+#[global]
+    Hint Opaque RewriteArithWithCasts : wf wf_extra interp interp_extra rewrite.
+#[global]
     Hint Rewrite @Interp_RewriteArithWithCasts : interp interp_extra.
   End Hints.
 End Compilers.

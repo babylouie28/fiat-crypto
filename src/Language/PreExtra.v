@@ -43,6 +43,12 @@ Module ident.
           cast (Datatypes.snd r) (Datatypes.snd x)).
   End cast.
 
+  Section comment.
+    Definition comment {A} (x : A) := tt.
+    (** Version of [comment] which does not keep its arguments alive in the final output *)
+    Definition comment_no_keep {A} (x : A) := tt.
+  End comment.
+
   Module fancy.
     Module with_wordmax.
       Section with_wordmax.
@@ -114,10 +120,13 @@ Module ident.
 End ident.
 
 Global Opaque ident.cast. (* This should never be unfolded except in [Language.Wf] *)
+Global Opaque ident.comment.
+Global Opaque ident.comment_no_keep.
 
 Notation prod_rect_nodep := Rewriter.Util.Prod.prod_rect_nodep (only parsing).
 Notation nat_rect_arrow_nodep := Rewriter.Util.NatUtil.nat_rect_arrow_nodep (only parsing).
 Notation list_rect_arrow_nodep := Rewriter.Util.ListUtil.list_rect_arrow_nodep (only parsing).
+Notation bool_rect_nodep := Rewriter.Util.Bool.bool_rect_nodep (only parsing).
 
 Module Thunked.
   Notation bool_rect := Rewriter.Util.Bool.Thunked.bool_rect (only parsing).

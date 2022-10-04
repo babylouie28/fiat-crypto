@@ -25,10 +25,11 @@ Require Import Crypto.PushButtonSynthesis.Primitives.
 Require Import Crypto.PushButtonSynthesis.FancyMontgomeryReductionReificationCache.
 Require Import Crypto.PushButtonSynthesis.InvertHighLow.
 Import ListNotations.
-Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope bool_scope.
+Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope bool_scope.
 
 Import
   Language.Compilers
+  Language.Wf.Compilers
   Stringification.Language.Compilers.
 Import Compilers.API.
 
@@ -45,17 +46,17 @@ Local Opaque reified_montred_gen. (* needed for making [autorewrite] not take a 
 Section rmontred.
   Context {output_language_api : ToString.OutputLanguageAPI}
           {static : static_opt}
+          {internal_static : internal_static_opt}
+          {inline : inline_opt}
+          {inline_internal : inline_internal_opt}
           (N R N' : Z) (n : nat)
-          (machine_wordsize : Z).
+          (machine_wordsize : machine_wordsize_opt).
 
   Let value_range := r[0 ~> (2^machine_wordsize - 1)%Z]%zrange.
   Let flag_range := r[0 ~> 1]%zrange.
   Let bound := Some value_range.
   Let consts_list := [N; N'].
-  Let R' := match Z.modinv R N with
-            | Some R' => R'
-            | None => 0
-            end.
+  Let R' := Z.modinv R N.
 
   Definition possible_values_of_machine_wordsize
     := [1; machine_wordsize / 2; machine_wordsize; 2 * machine_wordsize]%Z.
@@ -63,7 +64,20 @@ Section rmontred.
 
   Let possible_values := possible_values_of_machine_wordsize.
 
+  Local Existing Instance default_language_naming_conventions.
+  Local Existing Instance default_documentation_options.
+  Local Existing Instance default_output_options.
+  Local Existing Instance AbstractInterpretation.default_Options.
+  Local Instance widen_carry : widen_carry_opt := false.
+  Local Instance widen_bytes : widen_bytes_opt := true.
+  Local Instance only_signed : only_signed_opt := false.
+  Local Instance no_select_size : no_select_size_opt := None.
   Local Instance split_mul_to : split_mul_to_opt := None.
+  Local Instance split_multiret_to : split_multiret_to_opt := None.
+  Local Instance unfold_value_barrier : unfold_value_barrier_opt := true.
+  Local Instance assembly_hints_lines : assembly_hints_lines_opt := [].
+  Local Instance ignore_unique_asm_names : ignore_unique_asm_names_opt := false.
+  Local Instance low_level_rewriter_method : low_level_rewriter_method_opt := default_low_level_rewriter_method.
 
   Let fancy_args
     := (Some {| Pipeline.invert_low log2wordsize := invert_low log2wordsize consts_list;
@@ -86,7 +100,7 @@ Section rmontred.
 
   (** Note: If you change the name or type signature of this
         function, you will need to update the code in CLI.v *)
-  Definition check_args {T} (res : Pipeline.ErrorT T)
+  Definition check_args {T} (requests : list string) (res : Pipeline.ErrorT T)
     : Pipeline.ErrorT T
     := fold_right
          (fun '(b, e) k => if b:bool then Error e else k)
@@ -105,6 +119,7 @@ Section rmontred.
             ((negb (2 <=? machine_wordsize))%Z, Pipeline.Value_not_leZ "machine_wordsize < 2" 2 machine_wordsize)].
 
   Local Arguments Z.mul !_ !_.
+
   Local Ltac use_curve_good_t :=
     repeat first [ assumption
                  | progress cbv [EquivModulo.Z.equiv_modulo]
@@ -116,7 +131,8 @@ Section rmontred.
                  | solve [ auto with zarith ]
                  | rewrite Z.log2_pow2 by use_curve_good_t ].
 
-  Context (curve_good : check_args (Success tt) = Success tt).
+  Context (requests : list string)
+          (curve_good : check_args requests (Success tt) = Success tt).
 
   Lemma use_curve_good
     : 0 <= N < R
@@ -129,22 +145,7 @@ Section rmontred.
       /\ 2 <= machine_wordsize
       /\ 2 ^ machine_wordsize = R.
   Proof using curve_good.
-    clear -curve_good.
-    cbv [check_args fold_right] in curve_good.
-    break_innermost_match_hyps; try discriminate.
-    rewrite Bool.negb_false_iff in *.
-    Z.ltb_to_lt.
-    rewrite NPeano.Nat.eqb_neq in *.
-    intros.
-    repeat apply conj.
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
-    { use_curve_good_t. }
+    prepare_use_curve_good ().
     { use_curve_good_t. }
     { use_curve_good_t. }
     { use_curve_good_t. }
@@ -156,15 +157,15 @@ Section rmontred.
          fancy_args (* fancy *)
          possible_values
          (reified_montred_gen
-            @ GallinaReify.Reify N @ GallinaReify.Reify R @ GallinaReify.Reify N' @ GallinaReify.Reify machine_wordsize)
+            @ GallinaReify.Reify N @ GallinaReify.Reify R @ GallinaReify.Reify N' @ GallinaReify.Reify (machine_wordsize:Z))
          (bound, (bound, tt))
          bound.
 
   Definition smontred (prefix : string)
-    : string * (Pipeline.ErrorT (list string * ToString.ident_infos))
+    : string * (Pipeline.ErrorT (Pipeline.ExtendedSynthesisResult _))
     := Eval cbv beta in
-        FromPipelineToString
-          prefix "montred" montred
+        FromPipelineToString!
+          machine_wordsize prefix "montred" montred
           (fun _ _ _ => @nil string).
 
   Local Ltac solve_montred_preconditions :=
@@ -189,4 +190,18 @@ Section rmontred.
     { cbv [ZRange.type.base.option.is_bounded_by ZRange.type.base.is_bounded_by bound is_bounded_by_bool value_range upper lower].
       rewrite Bool.andb_true_iff, !Z.leb_le. lia. }
   Qed.
+
+  Lemma Wf_montred res (Hres : montred = Success res) : Wf res.
+  Proof using Type. prove_pipeline_wf (). apply fancy_args_good. Qed.
 End rmontred.
+
+Module Export Hints.
+#[global]
+  Hint Opaque
+       montred
+  : wf_op_cache.
+#[global]
+  Hint Immediate
+       Wf_montred
+  : wf_op_cache.
+End Hints.

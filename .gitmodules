@@ -5,12 +5,9 @@
 	path = coqprime
 	url = https://github.com/thery/coqprime
 	ignore = dirty
-[submodule "bedrock2"]
-	path = bedrock2
-	url = https://github.com/mit-plv/bedrock2.git
 [submodule "rewriter"]
 	path = rewriter
 	url = https://github.com/mit-plv/rewriter.git
-[submodule "etc/timeout"]
-	path = etc/timeout
-	url = https://github.com/pshved/timeout.git
+[submodule "rupicola"]
+	path = rupicola
+	url = https://github.com/mit-plv/rupicola.git

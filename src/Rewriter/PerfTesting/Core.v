@@ -44,11 +44,28 @@ Import
   Rewriter.All.Compilers.
 
 Local Existing Instance Stringification.C.Compilers.ToString.C.OutputCAPI.
+Local Existing Instance default_language_naming_conventions.
+Local Existing Instance default_documentation_options.
+Local Existing Instance default_output_options.
+Local Existing Instance AbstractInterpretation.default_Options.
+Local Instance : package_name_opt := None.
+Local Instance : class_name_opt := None.
 Local Instance : static_opt := true.
+Local Instance : internal_static_opt := true.
+Local Instance : inline_opt := true.
+Local Instance : inline_internal_opt := true.
+Local Instance : use_mul_for_cmovznz_opt := false.
 Local Instance : emit_primitives_opt := true.
+Local Instance : only_signed_opt := false.
+Local Instance : no_select_opt := false.
 Local Instance : should_split_mul_opt := false.
+Local Instance : should_split_multiret_opt := false.
+Local Instance : unfold_value_barrier_opt := true.
+Local Instance : assembly_hints_lines_opt := [].
+Local Instance : ignore_unique_asm_names_opt := false.
 Local Instance : widen_bytes_opt := false.
 Local Instance : widen_carry_opt := false.
+Local Instance : tight_upperbound_fraction_opt := default_tight_upperbound_fraction.
 
 Import API.
 
@@ -62,21 +79,13 @@ Module RT_ExtraDef := Core.RT_Extra Core.RuntimeDefinitions.
 Module ModOpsDef := ModOps.ModOps Core.RuntimeDefinitions.
 Module Import WordByWordMontgomeryAx := ArithmeticCPS.WordByWordMontgomery.WordByWordMontgomery Core.RuntimeAxioms.
 Module Import WordByWordMontgomeryDef := ArithmeticCPS.WordByWordMontgomery.WordByWordMontgomery Core.RuntimeDefinitions.
+Import Rewriter.Rewriter.ProofsCommon.Compilers.RewriteRules.GoalType.
+Import Rewriter.Rewriter.ProofsCommon.Compilers.RewriteRules.GoalType.DefaultOptionType.
 
-Definition parse_Z (s : string) : option Z
-  := z <- ParseArithmetic.parse_Z s;
-       match snd z with
-       | EmptyString => Some (fst z)
-       | _ => None
-       end.
-Definition parse_N (s : string) : option N
-  := match parse_Z s with
-     | Some Z0 => Some N0
-     | Some (Zpos p) => Some (Npos p)
-     | _ => None
-     end.
-Definition parse_nat (s : string) : option nat
-  := option_map N.to_nat (parse_N s).
+Ltac with_each_method tac :=
+  tac precomputed_decision_tree;
+  tac unreduced_decision_tree;
+  tac unreduced_naive.
 
 Module Import UnsaturatedSolinas.
   Class params :=
@@ -87,8 +96,9 @@ Module Import UnsaturatedSolinas.
       limbwidth := limbwidth n s c;
       machine_wordsize : Z }.
 
-  Global Instance show_params : Show params
-    := fun _ p => ("{| n := " ++ show false n ++ "; s := " ++ show false s ++ "; c := " ++ show false c ++ "; idxs := " ++ show false idxs ++ "; machine_wordsize := " ++ show false machine_wordsize ++ "|}")%string.
+  Global Instance show_lvl_params : ShowLevel params
+    := fun p => neg_wrap_parens ("{| n := " ++ show_lvl n term_lvl ++ "; s := " ++ show_lvl s term_lvl ++ "; c := " ++ show_lvl c term_lvl ++ "; idxs := " ++ show_lvl idxs term_lvl ++ "; machine_wordsize := " ++ show_lvl machine_wordsize term_lvl ++ "|}")%string.
+  Global Instance show_params : Show params := show_lvl_params.
 
   Definition of_string (p : string) (bitwidth : Z) : list params
     := match parseZ_arith_to_taps p with
@@ -104,33 +114,36 @@ Module Import UnsaturatedSolinas.
   Definition GallinaDefOf (p : params) : Dyn
     := dyn (fun f g : list Z => ModOpsDef.carry_mulmod (Qnum limbwidth) (Zpos (Qden limbwidth)) s c n idxs (RT_ExtraDef.expand_list 0 f n) (RT_ExtraDef.expand_list 0 g n)).
 
-  Definition PipelineFullOf (p : params) : Pipeline.ErrorT (Expr _)
-    := PushButtonSynthesis.UnsaturatedSolinas.carry_mul n s c machine_wordsize.
-  Definition PipelineFullToStringsOf (p : params) : string * _
-    := PushButtonSynthesis.UnsaturatedSolinas.scarry_mul n s c machine_wordsize "".
+  Definition PipelineFullOf : params * low_level_rewriter_method_opt -> Pipeline.ErrorT (Expr _)
+    := fun '(p, method) => PushButtonSynthesis.UnsaturatedSolinas.carry_mul n s c machine_wordsize.
+  Definition PipelineFullToStringsOf : params * low_level_rewriter_method_opt -> string * _
+    := fun '(p, method) => PushButtonSynthesis.UnsaturatedSolinas.scarry_mul n s c machine_wordsize "".
   Section pipeline.
-    Context (p : params).
+    Context (p_opts : params * low_level_rewriter_method_opt).
+    Let p := fst p_opts.
+    Let opts := @Pipeline.opts_of_method (snd p_opts).
+    Local Existing Instance p.
 
     Let E := (reified_carry_mul_gen
                 @ GallinaReify.Reify (Qnum limbwidth) @ GallinaReify.Reify (Z.pos (Qden limbwidth)) @ GallinaReify.Reify s @ GallinaReify.Reify c @ GallinaReify.Reify n @ GallinaReify.Reify idxs)%Expr.
 
     Let E2 := let E := PartialEvaluateWithListInfoFromBounds E (Some (List.repeat None n), (Some (List.repeat None n), tt)) in
-              let E := PartialEvaluate E in
+              let E := PartialEvaluate opts E in
               E.
 
-  Definition PipelineNBEOf : Expr _
-    := E2.
+    Definition PipelineNBEOf : Expr _
+      := E2.
 
-  Definition PipelineFlatNBEOf : GeneralizeVar.Flat.expr _
-    := GeneralizeVar.ToFlat PipelineNBEOf.
+    Definition PipelineFlatNBEOf : GeneralizeVar.Flat.expr _
+      := GeneralizeVar.ToFlat PipelineNBEOf.
 
-  Definition PipelineArithOf : Expr _
-    := let E := E2 in
-       let E := Pipeline.RewriteAndEliminateDeadAndInline (RewriteRules.RewriteArith 0) true (*with_dead_code_elimination*) false (*with_subst01*) E in
-       E.
+    Definition PipelineArithOf : Expr _
+      := let E := E2 in
+         let E := Pipeline.RewriteAndEliminateDeadAndInline (RewriteRules.RewriteArith 0 opts) true (*with_dead_code_elimination*) false (*with_subst01*) true (* let_bind_return *) E in
+         E.
 
-  Definition PipelineFlatArithOf : GeneralizeVar.Flat.expr _
-    := GeneralizeVar.ToFlat PipelineArithOf.
+    Definition PipelineFlatArithOf : GeneralizeVar.Flat.expr _
+      := GeneralizeVar.ToFlat PipelineArithOf.
   End pipeline.
 
   Definition ForExtraction {R}
@@ -140,35 +153,42 @@ Module Import UnsaturatedSolinas.
              (prime : string) (bitwidth : string) (index : string)
              (error : list string -> R)
     : R
-    := let str_bitwidth := bitwidth in
-       let str_index := index in
-       match parse_Z bitwidth, parse_nat index with
-       | Some bitwidth, Some index
-         => match List.nth_error (of_string prime bitwidth) index with
-            | Some p
-              => let make_descr := fun kind => ("Testing UnsaturatedSolinas " ++ prime ++ " (bitwidth = " ++ str_bitwidth ++ " ) (index = " ++ str_index ++ " ) (params = " ++ show false p ++ " ) " ++ kind ++ " with extraction " ++ extr_descr)%string in
-                 (seq _ _)
-                   (fun _ => time _ (make_descr "PipelineFullToStringsOf") (fun _ => PipelineFullToStringsOf p))
-                   (fun _
-                    => (seq _ _)
-                         (fun _ => time _ (make_descr "PipelineFlatNBEOf") (fun _ => PipelineFlatNBEOf p))
-                         (fun _ => time _ (make_descr "PipelineFlatArithOf") (fun _ => PipelineFlatArithOf p)))
-            | None
-              => error ["No such index"]
-            end
-       | None, None => error ["Could not parse bitwidth nor index"]
-       | None, _ => error ["Could not parse bitwidth"]
-       | _, None => error ["Could not parse index"]
-       end.
+    := Eval cbv beta iota delta [List.map List.fold_right] in
+        let str_bitwidth := bitwidth in
+        let str_index := index in
+        match parseZ_arith_strict bitwidth, parsenat_arith_strict index with
+        | Some bitwidth, Some index
+          => match List.nth_error (of_string prime bitwidth) index with
+             | Some p
+               => List.fold_right
+                    (fun v1 v2 => seq _ _ (fun _ => v1) (fun _ => v2))
+                    (seq _ _ id id)
+                    (List.map
+                       (fun method
+                        => let make_descr := fun kind => ("Testing UnsaturatedSolinas " ++ prime ++ " (bitwidth = " ++ str_bitwidth ++ " ) (index = " ++ str_index ++ " ) (method = " ++ show method ++ " ) (params = " ++ show p ++ " ) " ++ kind ++ " with extraction " ++ extr_descr)%string in
+                           (seq _ _)
+                             (fun _ => time _ (make_descr "PipelineFullToStringsOf") (fun _ => PipelineFullToStringsOf (p, method)))
+                             (fun _
+                              => (seq _ _)
+                                   (fun _ => time _ (make_descr "PipelineFlatNBEOf") (fun _ => PipelineFlatNBEOf (p, method)))
+                                   (fun _ => time _ (make_descr "PipelineFlatArithOf") (fun _ => PipelineFlatArithOf (p, method)))))
+                       [precomputed_decision_tree; unreduced_decision_tree; unreduced_naive])
+             | None
+               => error ["No such index"]
+             end
+        | None, None => error ["Could not parse bitwidth nor index"]
+        | None, _ => error ["Could not parse bitwidth"]
+        | _, None => error ["Could not parse index"]
+        end.
 
-  Tactic Notation "idtac_and_time" constr(prime) constr(bitwidth) constr(index) constr(p) string(descr) tactic3(tac) :=
-    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (params =" p ")" descr ":";
+  Tactic Notation "idtac_and_time" constr(prime) constr(bitwidth) constr(index) constr(p) constr(method) string(descr) tactic3(tac) :=
+    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (method =" method ") (params =" p ")" descr ":";
     time (idtac; tac ()).
 
-  Tactic Notation "idtac_and_time2" constr(prime) constr(bitwidth) constr(index) constr(p) string(descr) tactic3(tac) :=
-    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (params =" p ")" descr "(1) :";
+  Tactic Notation "idtac_and_time2" constr(prime) constr(bitwidth) constr(index) constr(p) constr(method) string(descr) tactic3(tac) :=
+    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (method =" method ") (params =" p ")" descr "(1) :";
     time (idtac; tac ());
-    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (params =" p ")" descr "(2) :";
+    idtac "Testing UnsaturatedSolinas" prime "(bitwidth =" bitwidth ") (index =" index ") (method =" method ") (params =" p ")" descr "(2) :";
     time (idtac; tac ()).
 
   Ltac compute_p prime bitwidth index :=
@@ -182,10 +202,10 @@ Module Import UnsaturatedSolinas.
   Ltac perfGallinaAxOf' prime bitwidth index p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth index p "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac)
+      => idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time2 prime bitwidth index p (@None unit) "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaAxOf prime bitwidth index :=
@@ -195,9 +215,9 @@ Module Import UnsaturatedSolinas.
     check_precomputed_enabled;
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth index p "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac)
+      => idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaAxComputedOf prime bitwidth index :=
@@ -207,22 +227,22 @@ Module Import UnsaturatedSolinas.
   Ltac perfPipelineOf' prime bitwidth index p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth index p "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf p) in idtac)
+      => with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf (p, method)) in idtac))
     | None => idtac
     end.
   Ltac perfPipelineOf prime bitwidth index :=
@@ -231,8 +251,8 @@ Module Import UnsaturatedSolinas.
   Ltac perfGallinaDefOf' prime bitwidth index p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth index p "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac)
+      => idtac_and_time prime bitwidth index p (@None unit) "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaDefOf prime bitwidth index :=
@@ -242,31 +262,31 @@ Module Import UnsaturatedSolinas.
     let p := (eval vm_compute in (List.nth_error (of_string prime bitwidth) index)) in
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth index p "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time2 prime bitwidth index p "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth index p "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth index p "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf p) in idtac)
+      => idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf (p, method)) in idtac));
+         idtac_and_time2 prime bitwidth index p (@None unit) "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth index p method "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf (p, method)) in idtac));
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
+         idtac_and_time prime bitwidth index p (@None unit) "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth index p method "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf (p, method)) in idtac))
     | None => idtac "No params" index "for prime" prime
     end.
 
@@ -283,16 +303,14 @@ Module Import WordByWordMontgomery.
       s := 2^Z.log2_up m;
       n : nat := Z.to_nat (Qceiling (Z.log2_up s / machine_wordsize));
       r := 2^machine_wordsize;
-      m' := match Z.modinv (-m) r with
-            | Some m' => m'
-            | None => 0
-            end }.
+      m' := Z.modinv (-m) r }.
 
-  Global Instance show_params : Show params
-    := fun _ p => ("{| m := " ++ show false m ++ "; machine_wordsize := " ++ show false machine_wordsize ++ "|}")%string.
+  Global Instance show_lvl_params : ShowLevel params
+    := fun p => neg_wrap_parens ("{| m := " ++ show_lvl m term_lvl ++ "; machine_wordsize := " ++ show_lvl machine_wordsize term_lvl ++ "|}")%string.
+  Global Instance show_params : Show params := show_lvl_params.
 
   Definition of_string (p : string) (bitwidth : Z) : option params
-    := match parseZ_arith p with
+    := match parseZ_arith_strict p with
        | Some v => Some {| m := v ; machine_wordsize := bitwidth |}
        | None => None
        end.
@@ -303,33 +321,36 @@ Module Import WordByWordMontgomery.
   Definition GallinaDefOf (p : params) : Dyn
     := dyn (fun f g : list Z => WordByWordMontgomeryDef.mulmod machine_wordsize n m m' (RT_ExtraDef.expand_list 0 f n) (RT_ExtraDef.expand_list 0 g n)).
 
-  Definition PipelineFullOf (p : params) : Pipeline.ErrorT (Expr _)
-    := PushButtonSynthesis.WordByWordMontgomery.mul m machine_wordsize.
-  Definition PipelineFullToStringsOf (p : params) : string * _
-    := PushButtonSynthesis.WordByWordMontgomery.smul m machine_wordsize "".
+  Definition PipelineFullOf : params * low_level_rewriter_method_opt -> Pipeline.ErrorT (Expr _)
+    := fun '(p, method) => PushButtonSynthesis.WordByWordMontgomery.mul m machine_wordsize.
+  Definition PipelineFullToStringsOf : params * low_level_rewriter_method_opt -> string * _
+    := fun '(p, method) => PushButtonSynthesis.WordByWordMontgomery.smul m machine_wordsize "".
   Section pipeline.
-    Context (p : params).
+    Context (p_opts : params * low_level_rewriter_method_opt).
+    Let p := fst p_opts.
+    Let opts := @Pipeline.opts_of_method (snd p_opts).
+    Local Existing Instance p.
 
     Let E := (reified_mul_gen
                 @ GallinaReify.Reify machine_wordsize @ GallinaReify.Reify n @ GallinaReify.Reify m @ GallinaReify.Reify m')%Expr.
 
     Let E2 := let E := PartialEvaluateWithListInfoFromBounds E (Some (List.repeat None n), (Some (List.repeat None n), tt)) in
-              let E := PartialEvaluate E in
+              let E := PartialEvaluate opts E in
               E.
 
-  Definition PipelineNBEOf : Expr _
-    := E2.
+    Definition PipelineNBEOf : Expr _
+      := E2.
 
-  Definition PipelineFlatNBEOf : GeneralizeVar.Flat.expr _
-    := GeneralizeVar.ToFlat PipelineNBEOf.
+    Definition PipelineFlatNBEOf : GeneralizeVar.Flat.expr _
+      := GeneralizeVar.ToFlat PipelineNBEOf.
 
-  Definition PipelineArithOf : Expr _
-    := let E := E2 in
-       let E := Pipeline.RewriteAndEliminateDeadAndInline (RewriteRules.RewriteArith 0) true (*with_dead_code_elimination*) false (*with_subst01*) E in
-       E.
+    Definition PipelineArithOf : Expr _
+      := let E := E2 in
+         let E := Pipeline.RewriteAndEliminateDeadAndInline (RewriteRules.RewriteArith 0 opts) true (*with_dead_code_elimination*) false (*with_subst01*) true (* let_bind_return *) E in
+         E.
 
-  Definition PipelineFlatArithOf : GeneralizeVar.Flat.expr _
-    := GeneralizeVar.ToFlat PipelineArithOf.
+    Definition PipelineFlatArithOf : GeneralizeVar.Flat.expr _
+      := GeneralizeVar.ToFlat PipelineArithOf.
   End pipeline.
 
   Definition ForExtraction {R}
@@ -339,32 +360,39 @@ Module Import WordByWordMontgomery.
              (prime : string) (bitwidth : string)
              (error : list string -> R)
     : R
-    := let str_bitwidth := bitwidth in
-       match parse_Z bitwidth with
-       | Some bitwidth
-         => match of_string prime bitwidth with
-            | Some p
-              => let make_descr := fun kind => ("Testing WordByWordMontgomery " ++ prime ++ " (bitwidth = " ++ str_bitwidth ++ " ) (params = " ++ show false p ++ " ) " ++ kind ++ " with extraction " ++ extr_descr)%string in
-                 (seq _ _)
-                   (fun _ => time _ (make_descr "PipelineFullToStringsOf") (fun _ => PipelineFullToStringsOf p))
-                   (fun _
-                    => (seq _ _)
-                         (fun _ => time _ (make_descr "PipelineFlatNBEOf") (fun _ => PipelineFlatNBEOf p))
-                         (fun _ => time _ (make_descr "PipelineFlatArithOf") (fun _ => PipelineFlatArithOf p)))
-            | None
-              => error ["Invalid prime"]
-            end
-       | None => error ["Could not parse bitwidth"]
-       end.
+    := Eval cbv beta iota delta [List.map List.fold_right] in
+        let str_bitwidth := bitwidth in
+        match parseZ_arith_strict bitwidth with
+        | Some bitwidth
+          => match of_string prime bitwidth with
+             | Some p
+               => List.fold_right
+                    (fun v1 v2 => seq _ _ (fun _ => v1) (fun _ => v2))
+                    (seq _ _ id id)
+                    (List.map
+                       (fun method
+                        => let make_descr := fun kind => ("Testing WordByWordMontgomery " ++ prime ++ " (bitwidth = " ++ str_bitwidth ++ " ) (method = " ++ show method ++ " ) (params = " ++ show p ++ " ) " ++ kind ++ " with extraction " ++ extr_descr)%string in
+                           (seq _ _)
+                             (fun _ => time _ (make_descr "PipelineFullToStringsOf") (fun _ => PipelineFullToStringsOf (p, method)))
+                             (fun _
+                              => (seq _ _)
+                                   (fun _ => time _ (make_descr "PipelineFlatNBEOf") (fun _ => PipelineFlatNBEOf (p, method)))
+                                   (fun _ => time _ (make_descr "PipelineFlatArithOf") (fun _ => PipelineFlatArithOf (p, method)))))
+                       [precomputed_decision_tree; unreduced_decision_tree; unreduced_naive])
+             | None
+               => error ["Invalid prime"]
+             end
+        | None => error ["Could not parse bitwidth"]
+        end.
 
-  Tactic Notation "idtac_and_time" constr(prime) constr(bitwidth) constr(p) string(descr) tactic3(tac) :=
-    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (params =" p ")" descr ":";
+  Tactic Notation "idtac_and_time" constr(prime) constr(bitwidth) constr(p) constr(method) string(descr) tactic3(tac) :=
+    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (method =" method ") (params =" p ")" descr ":";
     time (idtac; tac ()).
 
-  Tactic Notation "idtac_and_time2" constr(prime) constr(bitwidth) constr(p) string(descr) tactic3(tac) :=
-    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (params =" p ")" descr "(1) :";
+  Tactic Notation "idtac_and_time2" constr(prime) constr(bitwidth) constr(p) constr(method) string(descr) tactic3(tac) :=
+    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (method =" method ") (params =" p ")" descr "(1) :";
     time (idtac; tac ());
-    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (params =" p ")" descr "(2) :";
+    idtac "Testing WordByWordMontgomery" prime "(bitwidth =" bitwidth ") (method =" method ") (params =" p ")" descr "(2) :";
     time (idtac; tac ()).
 
   Ltac compute_p prime bitwidth :=
@@ -378,10 +406,10 @@ Module Import WordByWordMontgomery.
   Ltac perfGallinaAxOf' prime bitwidth p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth p "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac)
+      => idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time2 prime bitwidth p (@None unit) "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaAxOf prime bitwidth :=
@@ -391,9 +419,9 @@ Module Import WordByWordMontgomery.
     check_precomputed_enabled;
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth p "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac)
+      => idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaAxComputedOf prime bitwidth :=
@@ -403,22 +431,22 @@ Module Import WordByWordMontgomery.
   Ltac perfPipelineOf' prime bitwidth p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth p "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf p) in idtac)
+      => with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf (p, method)) in idtac))
     | None => idtac
     end.
   Ltac perfPipelineOf prime bitwidth :=
@@ -427,8 +455,8 @@ Module Import WordByWordMontgomery.
   Ltac perfGallinaDefOf' prime bitwidth p :=
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth p "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac)
+      => idtac_and_time prime bitwidth p (@None unit) "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac)
     | None => idtac
     end.
   Ltac perfGallinaDefOf prime bitwidth :=
@@ -438,31 +466,31 @@ Module Import WordByWordMontgomery.
     let p := (eval vm_compute in (of_string prime bitwidth)) in
     lazymatch p with
     | Some ?p
-      => idtac_and_time prime bitwidth p "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf p) in idtac);
-         idtac_and_time2 prime bitwidth p "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth p "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf p) in idtac);
-         idtac_and_time prime bitwidth p "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf p) in idtac)
+      => idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with vm_compute" (fun _ => let __ := eval vm_compute in (GallinaAxComputedOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with vm_compute" (fun _ => let __ := eval vm_compute in (PipelineArithOf (p, method)) in idtac));
+         idtac_and_time2 prime bitwidth p (@None unit) "GallinaAxOf with native_compute" (fun _ => let __ := eval native_compute in (GallinaAxOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineFullOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineFullToStringsOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineNBEOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time2 prime bitwidth p method "PipelineArithOf with native_compute" (fun _ => let __ := eval native_compute in (PipelineArithOf (p, method)) in idtac));
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with cbv" (fun _ => let __ := eval cbv in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaAxComputedOf with lazy" (fun _ => let __ := eval lazy in (GallinaAxComputedOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaDefOf with cbv_no_rt" (fun _ => let __ := eval cbv_no_rt in (GallinaDefOf p) in idtac);
+         idtac_and_time prime bitwidth p (@None unit) "GallinaDefOf with lazy_no_rt" (fun _ => let __ := eval lazy_no_rt in (GallinaDefOf p) in idtac);
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with cbv" (fun _ => let __ := eval cbv in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with cbv" (fun _ => let __ := eval cbv in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with cbv" (fun _ => let __ := eval cbv in (PipelineArithOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineFullToStringsOf with lazy" (fun _ => let __ := eval lazy in (PipelineFullToStringsOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineNBEOf with lazy" (fun _ => let __ := eval lazy in (PipelineNBEOf (p, method)) in idtac));
+         with_each_method ltac:(fun method => idtac_and_time prime bitwidth p method "PipelineArithOf with lazy" (fun _ => let __ := eval lazy in (PipelineArithOf (p, method)) in idtac))
     | None => idtac "No params for prime" prime
     end.
 

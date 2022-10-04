@@ -38,10 +38,12 @@ def eval_numexpr(numexpr):
 REGS = {'kind': r'(UnsaturatedSolinas|WordByWordMontgomery)',
         'bitwidth': r'bitwidth = ([0-9]+)',
         'prime': r'(?:UnsaturatedSolinas|WordByWordMontgomery)[\s"]*([^" ]+)',
+        'method': r'method = ([a-zA-Z0-9_-]+)',
         'descr': r'\|}\s*\)[\s"]*([^:]+)',
         'real': r'(?:ran for |real:\s*)([0-9\.]*) s',
         'user': r'(?:secs \(|user:\s*)([0-9\.]*)(?:u,| s)',
-        'index': r'(?:UnsaturatedSolinas.*index = ([0-9]+)|WordByWordMontgomery)'}
+        'index': r'(?:index = ([0-9]+)|WordByWordMontgomery)',
+        'nlimbs': r'(?:[ \.]n := ([0-9]+)|WordByWordMontgomery)'}
 def get_data(line):
     ret = {}
     bad = False
@@ -75,7 +77,7 @@ def get_data_for_graph(lines, key_is_good):
         if line is None: continue
         prime = line['prime']
         if not prime in data.keys(): data[prime] = {}
-        key = ('%(kind)s x%(bitwidth)s %(index)s | %(descr1)s with %(descr2)s' % line).strip()
+        key = ('%(kind)s x%(bitwidth)s %(index)s | %(descr1)s with %(descr2)s using %(method)s' % line).strip()
         new_data = {'real': line['real'], 'user': line['user']}
         if key in data[prime]: warn('Overwriting (%s) data[%s][%s] = %s with %s' % (line['prime_str'], prime, key, str(data[prime][key]), str(new_data)))
         data[prime][key] = new_data
@@ -119,17 +121,17 @@ def lines_to_rows(lines, for_graph=False, real_or_user='real', only=None, **kwar
         def format_prime(p): return p
         def format_time(t): return t
         def format_time_ratio(n, d): return float(n) / float(d)
-        def get_div_row(p, n, d):
+        def get_div_row(p, n=None, d=None):
             if p is None or n is None or d is None or '' in (p, n, d): return None
             return [format_prime(p), format_time_ratio(n, d)]
-        def get_row(p, t):
+        def get_row(p, t=None):
             if p is None or t is None or '' in (p, t): return
             return [format_prime(p), format_time(t)]
         arg_to_key_filter = {
-            'perf_old_vm_times': (lambda short_key: 'Pipeline' not in short_key and 'vm_compute' in short_key),
-            'perf_new_vm_times': (lambda short_key: 'Pipeline' in short_key and 'vm_compute' in short_key),
-            'perf_new_extraction_times': (lambda short_key: 'Pipeline' in short_key and 'extraction' in short_key),
-            'perf_old_cbv_times': (lambda short_key: 'Pipeline' not in short_key and 'cbv' in short_key)
+            'perf_old_vm_times': (lambda short_key: 'Pipeline' not in short_key and 'vm_compute' in short_key and 'precomputed_decision_tree' in short_key),
+            'perf_new_vm_times': (lambda short_key: 'Pipeline' in short_key and 'vm_compute' in short_key and 'precomputed_decision_tree' in short_key),
+            'perf_new_extraction_times': (lambda short_key: 'Pipeline' in short_key and 'extraction' in short_key and 'precomputed_decision_tree' in short_key),
+            'perf_old_cbv_times': (lambda short_key: 'Pipeline' not in short_key and 'cbv' in short_key and 'precomputed_decision_tree' in short_key)
         }
         div_arg_to_key_filters = dict(
             (key, (arg_to_key_filter['perf_' + n_key + '_times'], arg_to_key_filter['perf_' + d_key + '_times']))
@@ -151,7 +153,7 @@ def lines_to_rows(lines, for_graph=False, real_or_user='real', only=None, **kwar
                                           *[v for short_key, v in extra_args if d_key_filter(short_key)])
                         if row is not None: yield row
     else:
-        keys = ['prime', 'user', 'real', 'kind', 'bitwidth', 'descr1', 'descr2', 'index', 'prime_str']
+        keys = ['prime', 'user', 'real', 'kind', 'bitwidth', 'descr1', 'descr2', 'method', 'index', 'nlimbs', 'prime_str']
         yield list(keys)
         for data in map(get_data, lines):
             if data is None: continue
@@ -160,7 +162,7 @@ def lines_to_rows(lines, for_graph=False, real_or_user='real', only=None, **kwar
 def writecsv(outfname, lines, **kwargs):
     rows = lines_to_rows(lines, **kwargs)
     def do_write(csvfile):
-        writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
+        writer = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
         writer.writerows(rows)
     if outfname == '-': do_write(sys.stdout)
     else:
@@ -201,6 +203,13 @@ if __name__ == '__main__':
     if '--txt' in fnames:
         txt = True
         del fnames[fnames.index('--txt')]
+    while '--file-list' in fnames:
+        file_list_file = fnames[fnames.index('--file-list')+1]
+        del fnames[fnames.index('--file-list')+1]
+        del fnames[fnames.index('--file-list')]
+        with open(file_list_file, 'r') as f:
+            file_list = [i.strip() for i in f.readlines() if i.strip()]
+        fnames.extend(file_list)
     lines = [line
              for fname in fnames
              for line in postformat(get_input(fname))]
